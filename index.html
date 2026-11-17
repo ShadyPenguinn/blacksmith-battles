@@ -159,6 +159,10 @@ button.sm{padding:5px 9px;font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:9px;padding:22px;text-align:center;color:var(--muted)}
 /* battle */
 .squad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.armyslide{display:flex;align-items:center;gap:6px}.armyslide .arr{width:36px;height:36px;padding:0;border-radius:50%;font-size:20px;flex:0 0 auto}
+.armyslide .arr:not(:disabled){border-color:var(--ember);color:var(--ember)}
+.armytrack{flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}.armytrack::-webkit-scrollbar{display:none}
+.armytrack .sq{flex:0 0 calc(50% - 4px);scroll-snap-align:start}
 @media (max-width:520px){.squad{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .lines{display:flex;flex-direction:column;gap:6px}
 .line{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
@@ -345,8 +349,9 @@ const orderSlots=()=>reached('merchant');
 // Army (Jonathan, 2026-11-17): heroes join at lifetime Renown milestones, never bought. Plan goes to 50; this prototype stops at 12.
 // Ranks: each side splits into Front / Middle / Back, a quarter of the army wide (min 1), so a party of 4 keeps the old reach rules.
 const ARMY_MAX=50,ARMY_PROTO=12,SQ_PER=5;
-const heroAt=n=>n<=4?0:Math.round(40*Math.pow(1.2,n-5)); // lifetime renown for hero n
-const armyCap=()=>{let n=4;while(n<ARMY_PROTO&&(S.renown||0)>=heroAt(n+1))n++;return n};
+const HERO_EARLY=[0,0,10,30,40]; // hero 1 free, 2 at 10, 3 at 30, 4 at 40 (Jonathan, 2026-11-17), then x1.2 each
+const heroAt=n=>n<=4?HERO_EARLY[n]:Math.round(40*Math.pow(1.2,n-4)); // lifetime renown for hero n
+const armyCap=()=>{let n=1;while(n<ARMY_PROTO&&(S.renown||0)>=heroAt(n+1))n++;return n};
 const squadSlots=()=>armyCap();
 const frontW=n=>Math.max(1,Math.ceil(n/4));
 const rankOf=(i,n)=>{const f=frontW(n);return i<f?1:i<2*f?2:3};
@@ -561,6 +566,7 @@ function render(){growArmy();
   if(tab==='shop')v.innerHTML=shopView();
   if(tab==='barracks')v.innerHTML=barracksView();
   if(atStation())drawTrack();
+  if(tab==='fight')initArmy();
   if(tab==='fight'&&battle)drawArena();
 }
 
@@ -740,7 +746,7 @@ function armoryView(){
 }
 function squadHtml(){
   const c=armyCap(),lab=Array.from({length:c},(_,i)=>`Hero ${i+1} · ${RANKN[rankOf(i,c)-1]}`);
-  return `<div class="squad">${S.squad.slice(0,c).map((id,i)=>{if(i>=squadSlots())return `<div class="sq" style="opacity:.55"><span class="lbl">${lab[i]}</span><span class="note">Locked. Hire ${UN.squire.ms[i][0]} Squires in the Workshop.</span></div>`;const w=id&&byId(id);return w?`<div class="sq full"><span class="lbl">${lab[i]}</span><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b><span class="note">Power ${power(w,i)}${!canReach(w.arch,i,c)?` · can't reach from the ${RANKN[rankOf(i,c)-1]}, offense halved`:''}</span>${allTraits(w).length?`<span class="tr">${esc(allTraits(w).join(', '))}</span>`:''}<div class="row">${i>0?`<button class="b sm" data-mv="${i}" title="Move left">◀</button>`:''}<button class="b sm" data-pick="${i}">Change</button><button class="b sm" data-uneq="${w.id}">Remove</button></div></div>`:`<div class="sq"><span class="lbl">${lab[i]}</span><span class="note">Empty</span><div class="row"><button class="b sm primary" data-pick="${i}" ${S.weapons.length?'':'disabled'}>Choose weapon</button></div></div>`}).join('')}</div>`;
+  return `<div class="armyslide"><button class="b arr" id="armyL" aria-label="Toward the back">‹</button><div class="armytrack" id="armytrack">${S.squad.slice(0,c).map((id,i)=>[id,i]).reverse().map(([id,i])=>{if(i>=squadSlots())return `<div class="sq" style="opacity:.55"><span class="lbl">${lab[i]}</span><span class="note">Locked. Hire ${UN.squire.ms[i][0]} Squires in the Workshop.</span></div>`;const w=id&&byId(id);return w?`<div class="sq full"><span class="lbl">${lab[i]}</span><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b><span class="note">Power ${power(w,i)}${!canReach(w.arch,i,c)?` · can't reach from the ${RANKN[rankOf(i,c)-1]}, offense halved`:''}</span>${allTraits(w).length?`<span class="tr">${esc(allTraits(w).join(', '))}</span>`:''}<div class="row">${i>0?`<button class="b sm" data-mv="${i}" title="Move toward the front">▶</button>`:''}<button class="b sm" data-pick="${i}">Change</button><button class="b sm" data-uneq="${w.id}">Remove</button></div></div>`:`<div class="sq"><span class="lbl">${lab[i]}</span><span class="note">Empty</span><div class="row"><button class="b sm primary" data-pick="${i}" ${S.weapons.length?'':'disabled'}>Choose weapon</button></div></div>`}).join('')}</div><button class="b arr" id="armyR" aria-label="Toward the front">›</button></div>`;
 }
 function pickModal(i){
   const c=armyCap(),lab=Array.from({length:c},(_,j)=>`Hero ${j+1} (${RANKN[rankOf(j,c)-1]})`),cur=S.squad[i];
@@ -762,19 +768,28 @@ function stageReward(st){const k=tierAt(st),m=MATS[MATN[k]].m,w=wardenAt(st)>=0?
 function expLabel(){const k=wardenAt(S.stage);return k>=0?`Stage ${S.stage}: the ${MATN[k]} Warden`:`Expedition, stage ${S.stage}`}
 function gateNote(){const t=S.matTier||0;if(t>=MATN.length-1)return 'Every material is unlocked. Expeditions keep getting harder from here.';
   const ws=wardenStage(t);return `<b>Next material: ${MATN[t+1]}.</b> Beat the ${MATN[t]} Warden at Expedition stage ${ws}${S.stage<ws?` (you're on stage ${S.stage})`:''}. This Warden carries ${GR[gradeOf(wardenStars(t))].n} ${MATN[t]} weapons (★${wardenStars(t)}): ${t===0?"you'll need a fully etched Superior party, Masterwork weapons, or a really smart trait line":`aim for about ★${wardenStars(t)} on ${MATN[t]}, which holds ${matCap(MATN[t])} slams`}.`}
+let armyFromRight=0; // remembered slider position, 0 = Hero 1 in view
+function armyArrows(){const t=$('#armytrack');if(!t)return;const max=t.scrollWidth-t.clientWidth;armyFromRight=Math.max(0,Math.round(max-t.scrollLeft));
+  $('#armyL').disabled=t.scrollLeft<=2;$('#armyR').disabled=t.scrollLeft>=max-2}
+function initArmy(){const t=$('#armytrack');if(!t)return;const fr=armyFromRight;t.scrollLeft=t.scrollWidth-t.clientWidth-fr;armyArrows();t.addEventListener('scroll',armyArrows,{passive:true})}
+function armyStep(dir){const t=$('#armytrack');if(!t)return;const card=t.querySelector('.sq');t.scrollBy({left:dir*((card?card.offsetWidth:150)+8),behavior:'smooth'})}
 // Equip best: strongest usable weapons, melee up front, Spears next, Bows and Grimoires behind, Staffs at the very back.
-function equipBest(){const c=armyCap(),ord=a=>MELEE[a]?0:a==='Spear'?1:a==='Staff'?3:2;
-  const pick=[...S.weapons].filter(w=>w.state!==1).sort((a,b)=>power(b)-power(a)).slice(0,c).sort((a,b)=>ord(a.arch)-ord(b.arch)||power(b)-power(a));
-  S.squad=Array.from({length:c},(_,i)=>pick[i]?pick[i].id:null);save();render();toast(`Armed ${pick.length} of ${c} heroes.`)}
+function equipBest(){const c=armyCap(),pool=[...S.weapons].filter(w=>w.state!==1).sort((a,b)=>power(b)-power(a)),sq=[];
+  // fill from the back so ranged and Staffs take the rear, then each slot takes the strongest weapon that can reach from there
+  const ord=a=>MELEE[a]?0:a==='Spear'?1:a==='Staff'?3:2;
+  for(let i=0;i<c;i++){let k=pool.findIndex(w=>canReach(w.arch,i,c)&&(rankOf(i,c)<3||!MELEE[w.arch]));
+    if(rankOf(i,c)===3){const r=pool.filter(w=>!MELEE[w.arch]&&w.arch!=='Spear');if(r.length){const left=c-i;const pick=r.sort((a,b)=>ord(a.arch)-ord(b.arch)||power(b)-power(a))[0];k=pool.indexOf(pick)}}
+    if(k<0)k=0;sq.push(pool.length?pool.splice(k,1)[0].id:null)}
+  S.squad=sq;save();render();toast(`Armed ${sq.filter(Boolean).length} of ${c} heroes.`)}
 function fightView(){
   const ready=S.squad.some(id=>id&&byId(id)&&byId(id).state!==1);
   return `<div class="grid2">
-  <section class="panel"><p class="note" style="margin:0 0 8px;padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">${ready?gateNote():S.weapons.length?'Equip a weapon on one of your heroes below to set out on an Expedition.':'Your heroes are ready to set out, but they have nothing to fight with. Hire a Blacksmith and a Swordsmith in the Workshop and forge them some weapons.'}</p><div class="row" style="justify-content:space-between"><h2>Your army</h2><span class="note">Army Power <b style="color:var(--fg)">${squadPower(S.squad)}</b></span></div>
+  <section class="panel">${ready?'':`<p class="note" style="margin:0 0 8px;padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">${S.weapons.length?'Equip a weapon on one of your heroes below to set out on an Expedition.':'Your heroes are ready to set out, but they have nothing to fight with. Hire a Blacksmith and a Swordsmith in the Workshop and forge them some weapons.'}</p>`}<div class="row" style="justify-content:space-between"><h2>Your army</h2><span class="note">Army Power <b style="color:var(--fg)">${squadPower(S.squad)}</b></span></div>
     <div class="row" style="justify-content:space-between"><span class="note">${S.squad.slice(0,armyCap()).filter(Boolean).length}/${armyCap()} heroes armed${armyCap()<ARMY_PROTO?` · next hero at ${fmtN(heroAt(armyCap()+1))} renown`:''}</span><button class="b sm" id="eqbest" ${battle?.live?'disabled':''}>Equip best</button></div>
+    <div style="margin:8px 0 10px">${squadHtml()}</div>
     <div class="row"><button class="b primary" id="exp" ${!ready||battle?.live||waitLeft()?'disabled':''}>${waitLeft()?`Regrouping ${waitLeft()}s`:expLabel()}</button><button class="b" id="ghost" ${!ready||battle?.live?'disabled':''}>Ladder: fight a rival's ghost</button></div>
     ${S.stage>1&&U('quartermaster')?`<div class="row" style="margin-top:6px"><button class="b" id="rep" ${!ready||battle?.live||waitLeft()?'disabled':''}>${waitLeft()?`Regrouping ${waitLeft()}s · `:''}Replay stage ${S.stage-1}${wardenAt(S.stage-1)>=0?` (${MATN[wardenAt(S.stage-1)]} Warden)`:''}</button><span class="note">Half rewards</span></div>`:''}
     ${battle?`<div class="row"><span class="note">Speed</span><div class="seg">${[1,2,4].map(x=>`<button data-spd="${x}" aria-pressed="${battle.spd===x}">${x}x</button>`).join('')}<button data-spd="0">Skip</button></div></div>`:''}
-    <div style="margin-top:10px">${squadHtml()}</div>
   </section>
   <section class="panel"><div class="row" style="justify-content:space-between"><h2>${battle?esc(battle.title):'Arena'}</h2>${battle?`<span class="note">Replay code ${battle.code}</span>`:''}</div>
    <div id="arena">${battle?'':`<div class="empty">No fight yet.</div>`}</div>
@@ -929,7 +944,7 @@ function unitFrom(w,side,i,label){let[m,mg,cr,h,df,md,v]=stats(w);if(side===0){c
 const wardenStars=k=>k===0?11:Math.round(.8*maxStars(matCap(MATN[k])));
 // Expected army at a stage: renown from clearing every stage so far, x1.5 for orders. Enemy squads scale by armyAt/4.
 const _cum=[0];function cumRen(st){for(let s=_cum.length;s<=st;s++)_cum[s]=_cum[s-1]+(2+tierAt(s-1))*(wardenAt(s-1)>=0?3:1);return _cum[st]}
-const armyAt=st=>{const r=1.5*cumRen(Math.max(1,st)-1);let n=4;while(n<ARMY_PROTO&&r>=heroAt(n+1))n++;return n};
+const armyAt=st=>{const r=1.5*cumRen(Math.max(1,st)-1);let n=1;while(n<ARMY_PROTO&&r>=heroAt(n+1))n++;return n};
 function armyPlan(plan,n){if(n<=plan.length)return plan.slice(0,n);const f=frontW(n);return Array.from({length:n},(_,i)=>i<f?plan[0]:i<2*f?plan[1]:plan[2+(i%2)])}
 function enemySquad(stage,elites){
   const r=rng(stage*7919+11),k=tierAt(stage),mat=MATN[k],m=MATS[mat].m;
@@ -948,7 +963,8 @@ function enemySquad(stage,elites){
     for(let j=0;j<eb;j++){const st=j%2?'Vigor':atkStat(arch);etch[st]=(etch[st]||0)+Math.round((st==='Vigor'?3*VIG:3)*m*em)}
     const w={arch,mat,g:ws?gradeOf(ws):g,etch,res:[],traits:[],...(ws?{stars:ws}:{})};
     return unitFrom(w,1,i,warden?`${mat} Warden (${arch})`:`${names[Math.floor(r()*names.length)]} (${arch})`)});
-  if(warden){if(nn<=4||elites)return units;const el=units.slice(0,4),esc=enemySquad(stage-1).slice(0,nn-4).map(u=>({...u,name:`${mat} Guard (${u.arch})`}));
+  if(warden){if(elites)return units;const ec=Math.min(4,armyCap());if(ec<4)return units.slice(0,ec); // a small army meets as many Warden elites as it has heroes
+    if(nn<=4)return units;const el=units.slice(0,4),esc=enemySquad(stage-1).slice(0,nn-4).map(u=>({...u,name:`${mat} Guard (${u.arch})`}));
     const ord=a=>MELEE[a]?0:a==='Spear'?1:a==='Staff'?3:2;const all=[...el,...esc].map((u,j)=>({u,j})).sort((a,b)=>ord(a.u.arch)-ord(b.u.arch)||a.j-b.j).map(x=>x.u);
     return all.map((u,i)=>({...u,id:'1:'+i}))}
   if(k===0)return units;
@@ -1201,6 +1217,8 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(t.id==='oil'){if(S.dust>=3){S.dust-=3;S.oil++;save();render()}}
   else if(t.id==='exp')startBattle('exp');
   else if(t.id==='eqbest')equipBest();
+  else if(t.id==='armyL')armyStep(-1);
+  else if(t.id==='armyR')armyStep(1);
   else if(t.id==='ghost')startBattle('ghost');
   else if(t.id==='rep')startBattle('rep');
   else if(d.spd!==undefined){if(battle){battle.spd=+d.spd;if(battle.spd===0&&battle.live){battle.spd=0}document.querySelectorAll('[data-spd]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.spd===d.spd))}}
@@ -1220,7 +1238,7 @@ function repair(){
   if(S.mine&&!S.miners)S.miners=S.mine; delete S.mine;
   for(const k in f){if(typeof f[k]==='number'&&(typeof S[k]!=='number'||!isFinite(S[k])))S[k]=f[k]}
   if(!Array.isArray(S.orders))S.orders=[];
-  if(!Array.isArray(S.titles))S.titles=[];while(S.titles.length<4)S.titles.push({});S.titles=S.titles.map(t=>t&&typeof t==='object'?Object.fromEntries(Object.entries(t).filter(([k,r])=>TITLES[k]&&r>=1).map(([k,r])=>[k,Math.min(TITLE_MAX,r|0)])):{});
+  if(!Array.isArray(S.titles))S.titles=[];while(S.titles.length<1)S.titles.push({});S.titles=S.titles.map(t=>t&&typeof t==='object'?Object.fromEntries(Object.entries(t).filter(([k,r])=>TITLES[k]&&r>=1).map(([k,r])=>[k,Math.min(TITLE_MAX,r|0)])):{});
   if(!S.cores||typeof S.cores!=='object')S.cores={};
   if(S.coal){S.ore+=S.coal}delete S.coal;delete S.shovel;delete S.carts;
   if(!S.units||typeof S.units!=='object'){const old=S.weapons.length||S.stage>1;S.units=old?{miner:S.miners||0,smith:25,merchant:15,squire:10,scribe:12}:{}}delete S.miners;
