@@ -73,8 +73,8 @@ h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--mute
 @media (prefers-reduced-motion:reduce){.strip{transition:none}.fig,.you.walk{animation:none}}
 .tab:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.grid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px}
-@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:14px} /* one centered column at every width (tablets/desktop too) */
+.dig{max-width:560px;width:100%;margin:0 auto}.anvil{max-width:640px;margin:0 auto;width:100%;box-sizing:border-box}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 button.b{font:600 13px var(--body);color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer}
 button.b:hover:not(:disabled){border-color:var(--ember)}
