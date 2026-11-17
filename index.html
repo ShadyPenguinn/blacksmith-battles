@@ -931,7 +931,7 @@ const wardenStars=k=>k===0?11:Math.round(.8*maxStars(matCap(MATN[k])));
 const _cum=[0];function cumRen(st){for(let s=_cum.length;s<=st;s++)_cum[s]=_cum[s-1]+(2+tierAt(s-1))*(wardenAt(s-1)>=0?3:1);return _cum[st]}
 const armyAt=st=>{const r=1.5*cumRen(Math.max(1,st)-1);let n=4;while(n<ARMY_PROTO&&r>=heroAt(n+1))n++;return n};
 function armyPlan(plan,n){if(n<=plan.length)return plan.slice(0,n);const f=frontW(n);return Array.from({length:n},(_,i)=>i<f?plan[0]:i<2*f?plan[1]:plan[2+(i%2)])}
-function enemySquad(stage){
+function enemySquad(stage,elites){
   const r=rng(stage*7919+11),k=tierAt(stage),mat=MATN[k],m=MATS[mat].m;
   const start=k?wardenStage(k-1)+1:1,end=k<=LAST_WARDEN?wardenStage(k):start+40; // this tier's stretch of stages
   const warden=wardenAt(stage)>=0,f=Math.min(1,(stage-start)/Math.max(1,end-1-start)); // 0 at the start of the stretch, 1 just before the Warden
@@ -943,15 +943,18 @@ function enemySquad(stage){
   const names=['Bandit','Ghoul','Raider','Wolf-rider','Cultist','Brute'];
   const plan=warden?[['Axe'],['Sword'],['Bow'],['Staff']]:[['Sword','Axe'],['Spear','Axe','Sword'],['Bow','Spear'],['Staff','Bow']];
   const am=armyAt(stage)/4,nn=Math.max(n,Math.round(n*am));
-  const units=armyPlan(plan,nn).map((opts,i)=>{const arch=opts[Math.floor(r()*opts.length)],etch={};
+  const units=(warden?plan:armyPlan(plan,nn)).map((opts,i)=>{const arch=opts[Math.floor(r()*opts.length)],etch={};
     const ws=warden?wardenStars(wardenAt(stage)):null,em=ws?starMult(ws)/starMult(11):1;
     for(let j=0;j<eb;j++){const st=j%2?'Vigor':atkStat(arch);etch[st]=(etch[st]||0)+Math.round((st==='Vigor'?3*VIG:3)*m*em)}
     const w={arch,mat,g:ws?gradeOf(ws):g,etch,res:[],traits:[],...(ws?{stars:ws}:{})};
-    return unitFrom(w,1,i,warden?`${mat} ${i?'Guard':'Warden'} (${arch})`:`${names[Math.floor(r()*names.length)]} (${arch})`)});
-  if(warden||k===0)return units;
+    return unitFrom(w,1,i,warden?`${mat} Warden (${arch})`:`${names[Math.floor(r()*names.length)]} (${arch})`)});
+  if(warden){if(nn<=4||elites)return units;const el=units.slice(0,4),esc=enemySquad(stage-1).slice(0,nn-4).map(u=>({...u,name:`${mat} Guard (${u.arch})`}));
+    const ord=a=>MELEE[a]?0:a==='Spear'?1:a==='Staff'?3:2;const all=[...el,...esc].map((u,j)=>({u,j})).sort((a,b)=>ord(a.u.arch)-ord(b.u.arch)||a.j-b.j).map(x=>x.u);
+    return all.map((u,i)=>({...u,id:'1:'+i}))}
+  if(k===0)return units;
   // Difficulty never drops after a Warden (Jonathan, 2026-11-16): the 3 stages after a Warden sit just under it, then every stage is
   // harder than the Warden you beat and climbs toward the next one. Past the last Warden it keeps climbing 2% a stage.
-  const Wa=foeStr(enemySquad(wardenStage(k-1)))*4/armyAt(wardenStage(k-1)),last=k>LAST_WARDEN,Wb=last?0:foeStr(enemySquad(wardenStage(k)))*4/armyAt(wardenStage(k)); // per 4 heroes
+  const Wa=foeStr(enemySquad(wardenStage(k-1),true)),last=k>LAST_WARDEN,Wb=last?0:foeStr(enemySquad(wardenStage(k),true)); // the Warden's 4 elites = strength per 4 heroes
   const into=stage-start+1,target=into<=3?Wa*.93:last?Wa*1.06*Math.pow(1.02,into-4):Wa*1.06*Math.pow((Wb*.94)/(Wa*1.06),(stage-(start+3))/Math.max(1,end-1-(start+3)));
   const tgt=target*am,fixed=units.reduce((a,u)=>a+u.crit+u.haste*2,0),scal=units.reduce((a,u)=>a+(u.might+u.magic)*2+u.def+u.mdef*.6+u.hp/4,0),x=Math.max(.3,(tgt-fixed)/Math.max(1,scal));
   units.forEach(u=>{u.might=Math.round(u.might*x);u.magic=Math.round(u.magic*x);u.def=Math.round(u.def*x);u.mdef=Math.round(u.mdef*x);u.hp=u.max=Math.round(u.hp*x)});
