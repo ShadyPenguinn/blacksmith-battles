@@ -1,0 +1,1234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blacksmith Battles</title>
+<meta name="theme-color" content="#15120f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Blacksmith">
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a single-column forge counter. Resource strip on top, tabbed stations below, modals for rolls. Deliberately single dark theme: soot, ember, steel. */
+:root{
+  --bg:#15120f; --panel:#1f1a16; --panel2:#29221c; --line:#3b3029;
+  --fg:#f1e8dc; --muted:#a9998a; --ember:#ff8a3d; --ember-soft:rgba(255,138,61,.16);
+  --steel:#9fb6cc; --gold:#e9c45e; --good:#72d394; --bad:#ef5f57; --violet:#b69cff;
+  --display:"Cinzel",Georgia,"Times New Roman",serif;
+  --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:14px;line-height:1.45;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 calc(150px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--display);font-size:26px;letter-spacing:.04em;margin:0;line-height:1.1;text-wrap:balance}
+h1 span{color:var(--ember)}
+h2{font-family:var(--display);font-size:17px;margin:0;letter-spacing:.04em}
+h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0;font-weight:600}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.res{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-variant-numeric:tabular-nums;font-weight:600;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.chip small{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:15;background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:5px max(8px,env(safe-area-inset-left,0px)) max(24px,calc(8px + env(safe-area-inset-bottom,0px))) max(8px,env(safe-area-inset-right,0px))} /* room for the iPhone home indicator */
+.tabs .navgrid{max-width:620px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.tab{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--muted);font:600 12px var(--body);padding:9px 2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:40px}
+.tab[aria-selected="true"]{color:var(--fg);border-color:var(--ember);background:var(--ember-soft)}
+.tab:disabled{opacity:.35;cursor:default}
+/* World strip (Jonathan, 2026-11-17): one wide scene; the camera slides to the location of the button you press. Placeholder shapes until real art. */
+.hud{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:max(6px,env(safe-area-inset-top,0px));box-shadow:0 10px 14px -6px rgba(0,0,0,.55)}
+.hud .res{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-bottom:6px}
+.hud .chip{flex-direction:column;gap:0;align-items:center;justify-content:center;border-radius:8px;padding:4px 2px;min-width:0;line-height:1.15;font-size:13px}
+.hud .chip small{font-size:9px;letter-spacing:.06em}
+/* Art strip sized like the finished portrait screen: 180x128 world on a 180x320 phone screen */
+.world{--k:clamp(1,calc((min(100vw,980px) - 32px) / 210px),2.2);position:relative;height:clamp(150px,calc((min(100vw,980px) - 32px) * .71),300px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#0e0c14}
+.strip{position:absolute;inset:0;display:flex;transition:transform .7s cubic-bezier(.45,0,.25,1);will-change:transform}
+.loc{position:relative;flex:0 0 100%;height:100%;overflow:hidden}
+.loc .sky{position:absolute;inset:0}
+.loc .gnd{position:absolute;left:0;right:0;bottom:0;height:calc(12px * var(--k));background:#231c16;border-top:2px solid #3a2e24}
+.loc .glow{position:absolute;bottom:calc(8px * var(--k));width:calc(120px * var(--k));height:calc(90px * var(--k));border-radius:50%;filter:blur(18px);opacity:.55;pointer-events:none}
+.loc .bld{position:absolute;bottom:calc(12px * var(--k));transform:scale(var(--k));transform-origin:bottom left}
+.loc .sign{position:absolute;top:8px;left:10px;font:700 11px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--fg);background:rgba(10,8,6,.55);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 7px}
+.loc .crowd{position:absolute;left:4%;right:4%;bottom:calc(6px * var(--k));height:60px;transform:scale(var(--k));transform-origin:bottom left;z-index:1}
+.crowd .fig{position:absolute}
+.fig{width:7px;height:13px;border-radius:3px 3px 1px 1px;position:relative;animation:bob 1.8s ease-in-out infinite}
+.fig::before{content:"";position:absolute;left:0;top:-7px;width:7px;height:7px;border-radius:50%;background:inherit;filter:brightness(1.25)}
+@keyframes bob{50%{transform:translateY(-2px)}}
+.loc.locked .sky{filter:grayscale(1) brightness(.45)}
+.loc.locked .bld,.loc.locked .glow,.loc.locked .crowd{opacity:.15}
+.loc.locked .sign{color:var(--muted)}
+.you{position:absolute;left:50%;bottom:30px;width:9px;height:16px;margin-left:-4px;border-radius:3px 3px 1px 1px;background:var(--ember);z-index:2;box-shadow:0 0 10px rgba(255,138,61,.5)}
+.you::before{content:"";position:absolute;left:1px;top:-8px;width:8px;height:8px;border-radius:50%;background:#ffd2a8}
+.you.walk{animation:walk .28s ease-in-out infinite}.you.left{transform:scaleX(-1)}
+@keyframes walk{50%{translate:0 -3px}}
+@media (prefers-reduced-motion:reduce){.strip{transition:none}.fig,.you.walk{animation:none}}
+.tab:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button.b{font:600 13px var(--body);color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer}
+button.b:hover:not(:disabled){border-color:var(--ember)}
+button.b:disabled{opacity:.42;cursor:not-allowed}
+button.primary{background:var(--ember);border-color:var(--ember);color:#1b120b}
+button.primary:hover:not(:disabled){filter:brightness(1.08)}
+button.sm{padding:5px 9px;font-size:12px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}
+.stepper .b{width:44px;height:44px;padding:0;font-size:22px;line-height:1;border-radius:50%}
+.stepper .sv{min-width:64px;text-align:center;display:flex;flex-direction:column;line-height:1.1}
+.stepper .sv b{font-size:26px}.slider .sv{min-width:150px;cursor:pointer}.slider .sv b{font-size:20px}
+.uhead{cursor:pointer;flex:1;min-width:0}.uline{line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}.chev{color:var(--muted);font-size:11px}
+.vein .pertap{font:700 16px var(--body);color:var(--gold)}.autorate{text-align:center;margin:10px 0 0;color:var(--muted)}.autorate b{color:var(--gold)}.stepper .sv span{font-size:12px;color:var(--muted)}
+.stepcost{text-align:center;margin:4px 0 0;font-weight:600;color:var(--ember)}
+.seg button{font:600 13px var(--body);background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:7px 11px;cursor:pointer}
+.seg button[aria-pressed="true"]{border-color:var(--ember);background:var(--ember-soft)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.muted{color:var(--muted)}
+.note{font-size:12px;color:var(--muted)}
+/* forge */
+.anvil{display:flex;flex-direction:column;gap:12px}
+.track{position:relative;height:64px;border-radius:10px;background:linear-gradient(90deg,#2a1d15,#3a2416 50%,#2a1d15);border:1px solid var(--line);overflow:hidden;cursor:pointer;touch-action:manipulation}
+.zone{position:absolute;top:0;bottom:0;background:rgba(255,138,61,.28);border-left:1px solid rgba(255,170,110,.6);border-right:1px solid rgba(255,170,110,.6)}
+.zone i{position:absolute;top:0;bottom:0;left:30%;width:40%;background:rgba(255,214,150,.45);box-shadow:0 0 18px rgba(255,170,90,.8)}
+.marker{position:absolute;top:-4px;bottom:-4px;width:4px;margin-left:-2px;background:var(--fg);border-radius:2px;box-shadow:0 0 8px rgba(255,255,255,.7)}
+.track.idle .zone,.track.idle .marker{opacity:.25}
+.track.ring{height:210px;background:radial-gradient(circle at 50% 45%,#2a1f45,#151022 75%);border-color:#4a3a70}
+.rune{position:absolute;width:60px;height:60px;margin:-30px 0 0 -30px;pointer-events:none}
+.rtarget{position:absolute;inset:0;border-radius:50%;border:4px solid rgba(200,170,255,.95);box-shadow:0 0 16px rgba(170,130,255,.75),inset 0 0 12px rgba(170,130,255,.5)}
+.aring{position:absolute;inset:0;border-radius:50%;border:3px solid #fff;box-shadow:0 0 10px rgba(255,255,255,.6);will-change:transform}
+.rune b{position:absolute;inset:0;display:grid;place-items:center;font-size:24px;color:#e6dbff;text-shadow:0 0 10px #a78bfa}
+.track.idle .rune{opacity:.35}
+.pips{display:flex;gap:6px;flex-wrap:wrap}
+.pip{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--muted)}
+.pip.p{background:var(--ember);color:#1b120b;border-color:var(--ember)}
+.pip.g{background:var(--ember-soft);color:var(--ember);border-color:var(--ember)}
+.pip.m{color:var(--bad);border-color:var(--bad)}
+.forge-shake{animation:shake .18s}
+@keyframes shake{25%{transform:translate(-3px,1px)}50%{transform:translate(3px,-1px)}75%{transform:translate(-2px,0)}}
+.sparks{position:absolute;inset:0;pointer-events:none}
+.spark{position:absolute;width:4px;height:4px;border-radius:50%;background:#ffd08a;box-shadow:0 0 6px #ff9a40;animation:spark .5s ease-out forwards}
+@keyframes spark{to{transform:translate(var(--dx),var(--dy));opacity:0}}
+.tlabel{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 12px;font-weight:600;font-size:13px;color:var(--fg);pointer-events:none}
+.dig{display:grid;grid-template-columns:1fr;gap:12px}
+.vein{position:relative;overflow:hidden;height:170px;border-radius:12px;border:1px solid var(--line);background:radial-gradient(circle at 30% 30%,#7a5f46,#3a2c22 72%);color:var(--fg);font:600 14px var(--body);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.vein .big{font-family:var(--display);font-size:20px}
+.vein:hover{border-color:var(--ember)}
+.vein.bump{animation:bump .12s}
+@keyframes bump{50%{transform:scale(.97)}}
+.pop{position:absolute;font-weight:800;color:var(--gold);pointer-events:none;white-space:nowrap;animation:pop .7s ease-out forwards}
+@keyframes pop{from{transform:translate(-50%,-50%)}to{transform:translate(-50%,-160%);opacity:0}}
+@media (max-width:500px){.dig{grid-template-columns:1fr}.vein{height:120px}}
+.callout{font-family:var(--display);font-size:20px;min-height:28px;color:var(--ember)}
+/* orders */
+.order{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 12px;border:1px dashed var(--line);border-radius:8px}
+.order b{font-weight:600}
+.tline .row{flex-wrap:nowrap;flex-shrink:0}.tline .row .b{white-space:nowrap}
+.tline{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+.orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}
+/* weapons */
+.weps{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.wep{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.wep.eq{border-color:var(--steel)}
+.wep.cr{border-color:var(--bad)}
+.wep .hd{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.wep .nm{font-weight:700;font-size:15px}
+.badge{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.g0{color:#b8a898}.g1{color:#cfd8c2}.g2{color:#7fc4ff}.g3{color:var(--violet)}.g4{color:var(--gold)}.g5,.g6,.g7{color:#ff9a5c}.g8,.g9,.g10{color:#ff6f91}.g11,.g12,.g13{color:#5ee0d0}.g14,.g15,.g16{color:#ffd84d}.g17,.g18,.g19{color:#f5f5ff;text-shadow:0 0 6px #b98cff}
+.stats{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-variant-numeric:tabular-nums}
+.stats>*{background:var(--panel);border-radius:6px;padding:4px 0;text-align:center;font-weight:700;font-size:13px}
+.stats button{border:1px solid transparent;color:inherit;font:inherit;font-weight:700;font-size:13px;cursor:pointer;width:100%}
+.stats button:hover,.stats button.on{border-color:var(--accent)}
+.statinfo{background:var(--panel);border-left:3px solid var(--accent);border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.45}
+.stats small{display:block;font-size:9.5px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.stats .up{color:var(--good)}
+.slots{display:flex;gap:3px;align-items:center}
+.slot{width:12px;height:12px;border-radius:3px;border:1px solid var(--line)}
+.slot.ok{background:var(--good);border-color:var(--good)}
+.slot.no{background:transparent;border-color:var(--bad);position:relative}
+.slot.no::after{content:"";position:absolute;inset:5px -1px;background:var(--bad);transform:rotate(-45deg)}
+.empty{border:1px dashed var(--line);border-radius:9px;padding:22px;text-align:center;color:var(--muted)}
+/* battle */
+.squad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:520px){.squad{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lines{display:flex;flex-direction:column;gap:6px}
+.line{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.line.foe .hp i{background:var(--bad)}
+.tr{font-size:10.5px;color:var(--violet);font-weight:600}
+.fl.h{color:var(--good)}
+.sq{border:1px dashed var(--line);border-radius:8px;padding:8px;min-height:74px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.sq.full{border-style:solid;background:var(--panel2)}
+.sq .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.arena{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:start}
+.arena .vs{font-family:var(--display);color:var(--muted);align-self:center}
+.side{display:flex;flex-direction:column;gap:6px;min-width:0}
+.atk{height:3px;background:var(--line);border-radius:2px;margin-top:3px;overflow:hidden}.atk i{display:block;height:100%;width:0;background:var(--gold);transition:width .2s linear}.atk.full i{background:var(--good)}
+.unit{position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px;min-width:0}
+.unit .un{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp{height:7px;border-radius:4px;background:#3a2b25;margin-top:5px;overflow:hidden}
+.hp i{display:block;height:100%;background:var(--good);transition:width .12s}
+.side.foe .hp i{background:var(--bad)}
+.unit.dead{opacity:.35}
+.unit.hit{animation:hit .2s}
+@keyframes hit{0%{background:#5a2b21}100%{background:var(--panel2)}}
+.fl{position:absolute;right:8px;top:2px;font-weight:800;font-variant-numeric:tabular-nums;animation:fl .7s ease-out forwards;pointer-events:none}
+.fl.c{color:var(--gold);font-size:15px}
+@keyframes fl{to{transform:translateY(-18px);opacity:0}}
+.log{font-size:12px;color:var(--muted);max-height:150px;overflow:auto;display:flex;flex-direction:column-reverse;gap:2px;font-variant-numeric:tabular-nums}
+.log .w{color:var(--good)}.log .l{color:var(--bad)}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(8,6,5,.72);display:grid;place-items:center;padding:16px;z-index:20}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+.scrolls{display:flex;flex-direction:column;gap:6px}
+.scr{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel2)}
+.scr .od{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+.roll{display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0}
+.glyph{width:120px;height:120px;border-radius:50%;border:2px solid var(--ember);display:grid;place-items:center;font-family:var(--display);font-size:42px;color:var(--ember);box-shadow:0 0 30px var(--ember-soft)}
+.glyph.spin{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{from{transform:scale(.94);box-shadow:0 0 14px var(--ember-soft)}to{transform:scale(1.05);box-shadow:0 0 46px rgba(255,138,61,.45)}}
+.glyph.ok{border-color:var(--good);color:var(--good);box-shadow:0 0 50px rgba(114,211,148,.4)}
+.glyph.no{border-color:var(--muted);color:var(--muted);box-shadow:none}
+.glyph.crack{border-color:var(--bad);color:var(--bad);box-shadow:0 0 50px rgba(239,95,87,.45);animation:shake .3s 2}
+.result{font-family:var(--display);font-size:22px;text-align:center}
+.toast{position:fixed;left:50%;bottom:calc(136px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel2);border:1px solid var(--ember);border-radius:8px;padding:9px 14px;font-weight:600;z-index:30;max-width:calc(100% - 32px)}
+label.ck{display:flex;gap:6px;align-items:center;font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="hud"><div class="res" id="res"></div>
+  <div class="world" id="world" aria-hidden="true"><div class="strip" id="strip"></div></div></div>
+  <div id="view"></div>
+  <nav class="tabs" role="tablist"><div class="navgrid">
+    <button class="tab" role="tab" data-t="mine" data-n="Mine" aria-selected="true">Mine</button>
+    <button class="tab" role="tab" data-t="shop" data-n="Workshop" aria-selected="false">Workshop</button>
+    <button class="tab" role="tab" data-t="upg" data-n="Upgrades" aria-selected="false">Upgrades</button>
+    <button class="tab" role="tab" data-t="forge" data-n="Forge" aria-selected="false">Forge</button>
+    <button class="tab" role="tab" data-t="sanctum" data-n="Sanctum" aria-selected="false">Sanctum</button>
+    <button class="tab" role="tab" data-t="orders" data-n="Orders" aria-selected="false">Orders</button>
+    <button class="tab" role="tab" data-t="armory" data-n="Armory" aria-selected="false">Armory</button>
+    <button class="tab" role="tab" data-t="library" data-n="Library" aria-selected="false">Library</button>
+    <button class="tab" role="tab" data-t="barracks" data-n="Barracks" aria-selected="false">Barracks</button>
+    <button class="tab" role="tab" data-t="fight" data-n="Fight" aria-selected="false">Fight</button>
+  </div></nav>
+</div>
+<div id="modal"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(()=>{
+const ME={};window.__bbToyOwner=ME;const owns=()=>window.__bbToyOwner===ME; // only the newest copy of the page runs
+// Materials unlock by beating the previous material's Warden on Expeditions (every 3rd stage), not by renown.
+// Costs are fitted to a pacing model so the gates land at roughly 5, 10, 20, 40 and 80 minutes of active play.
+// Ore is the only forging cost (coal was cut). Costs are the old ore+coal total, since every tap now goes to ore.
+// Base ore for a 5-slam blank (doubled 2026-11-14 because weapons felt cheap). Bigger blanks cost base × slams ÷ 5.
+const MATS={Copper:{m:1,ore:60},Bronze:{m:1.25,ore:1440},Iron:{m:1.5,ore:9000},
+  Steel:{m:2.2,ore:27000},Moonsilver:{m:3,ore:84000},Starmetal:{m:4,ore:330000}}; // ore = a 3-slam blank
+// Endless materials (Jonathan, 2026-11-16): past Starmetal come Starmetal +1, +2 ... each x1.5 stats and x3 ore, each behind its own Warden.
+for(let n=1;n<=40;n++)MATS['Starmetal +'+n]={m:4*Math.pow(1.5,n),ore:330000*Math.pow(3,n)};
+const MATN=Object.keys(MATS);
+const wardenStage=k=>10*(k+1)*(k+1); // Wardens at stages 10, 40, 90, 160, 250, 360...: the Warden of material k guards material k+1
+const LAST_WARDEN=MATN.length-2; // every material has a Warden guarding the next one
+const wardenAt=st=>{for(let k=0;k<=LAST_WARDEN;k++)if(wardenStage(k)===st)return k;return -1};
+const tierAt=st=>{for(let k=0;k<=LAST_WARDEN;k++)if(st<=wardenStage(k))return k;return MATN.length-1};
+const fmtN=n=>{if(n<10000)return String(Math.round(n));const u=['k','M','B','T','Qa','Qi','Sx','Sp','Oc','No','Dc'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++}return (n>=100?Math.round(n):n>=10?Math.round(n*10)/10:Math.round(n*100)/100)+u[i]}; // silly numbers welcome
+const ORDER_GAP=120000; // a new customer every 2 minutes while a slot is open
+const ARCH={
+  Sword:{b:[10,0,8,10,6,4,40],note:'Swings from the front slot only. Riposte: 15% chance to counter a melee hit'},
+  Axe:{b:[13,0,6,7,5,3,42],note:'Swings from the front slot only. Cleave: half damage to the next enemy in line'},
+  Spear:{b:[11,0,6,9,4,4,36],note:'Reach: swings from slot 1 or 2'},
+  Bow:{b:[9,0,12,9,2,4,30],note:'Swings from anywhere and shoots the enemy at the back of their line'},
+  Staff:{b:[0,7,5,9,3,6,32],note:'Magic. Casts from anywhere. Heals the most hurt ally; weak magic bolts when nobody is hurt'},
+  Shield:{b:[4,0,2,7,10,7,44],note:'Tower shield. Front slot only. Covers the line: takes 30% of every hit aimed at an ally behind it, blocked by its own Defense or Magic Defense'},
+  Warhammer:{b:[20,0,5,5,6,3,46],note:'Front slot only and very slow. Every hit knocks the target\'s attack timer back'},
+  Grimoire:{b:[0,9,5,8,2,6,26],note:'Magic. Casts from anywhere, and every third cast hits the whole enemy line for 40% damage'}
+};
+// Stats (Jonathan, 2026-11-16): Might = physical attack, Magic = magic attack, Crit = critical chance, Haste = speed, Defense cuts physical hits,
+// Magic Defense cuts magic hits, Vigor = health. Physical attacks hit Defense, magic attacks hit Magic Defense.
+// Crit (back by Jonathan's call, 2026-11-16): % chance for a hit to deal 1.75x. Capped at 50% so stacking it is never the automatic pick,
+// and it does nothing for Staff heals or Thorns. Crit scrolls give 8x the points of other stats (like Vigor's 4x) so a Crit etch is worth roughly a Might etch.
+const ST=['Might','Magic','Crit','Haste','Defense','Magic Defense','Vigor'],ST_SHORT={Might:'MGT',Magic:'MAG',Crit:'CRT',Haste:'HST',Defense:'DEF','Magic Defense':'MDF',Vigor:'VIG'};
+const atkStat=arch=>ARCH[arch].b[1]>ARCH[arch].b[0]?'Magic':'Might';
+// Grades (Jonathan, 2026-11-16): 20 named grades by stars. Stats come from stars alone (x1.035 per star, compounding, no cap);
+// the grade is the badge and sets etch slots (s) and trait slots (t). Stars come from slams, with combos past the 4th Perfect in a row.
+const GR=[['Crude',0,3,0],['Fine',4,5,0],['Superior',7,6,1],['Masterwork',11,7,2],['Exalted',15,8,3],['Heroic',20,8,3],['Mythic',28,9,3],['Legendary',38,9,4],
+  ['Fabled',50,10,4],['Runebound',65,10,4],['Starforged',85,11,4],['Celestial',110,11,5],['Ascendant',140,12,5],['Titanic',180,12,5],['Godforged',230,13,5],
+  ['Worldbreaker',300,13,6],['Eternal',400,14,6],['Primordial',550,14,6],['Cosmic',750,15,6],['Infinite',1000,16,7]].map(([n,at,s,t])=>({n,at,s,t}));
+// Up to 20 stars the old curve holds (grade steps 1/1.15/1.3/1.45/1.6 plus 2% a star), so early Warden balance is unchanged; past 20 every star compounds 3.5%.
+const OLD_M=[1,1.15,1.3,1.45,1.6],OLD_AT=[0,4,7,11,15];
+const starMult=n=>{if(n>=20)return 1.76*Math.pow(1.035,n-20);let g=0;for(let i=0;i<5;i++)if(n>=OLD_AT[i])g=i;return OLD_M[g]*(1+0.02*(n-OLD_AT[g]))};
+const gradeOf=n=>GR.reduce((g,x,i)=>n>=x.at?i:g,0);
+const perfectStars=streak=>2+Math.max(0,streak-4); // streak = Perfects in a row including this one: 2,2,2,2, then 3,4,5...
+const maxStars=n=>{let t=0;for(let i=1;i<=n;i++)t+=perfectStars(i);return t};
+const SC={
+  Steady:{p:100,gain:1,crack:0,price:20},
+  Keen:{p:65,gain:3,crack:0,price:60},
+  Daring:{p:35,gain:6,crack:25,price:160,need:40},
+  Wild:{p:100,price:null},
+  Trait:{p:50,price:120,need:15},
+  Sovereign:{p:60,pct:.2,crack:0,price:null} // late game only: +20% of the stat (Jonathan, 2026-11-16)
+};
+const STACK=[0,1,1.6,2]; // 1 copy 100%, 2 copies 160%, 3 copies 200%
+const TRAITS={
+  'First Strike':'Start of battle: swing once right away',
+  'Rally':'Start of battle: the ally behind gets +3 Might (or Magic)',
+  'Bleed':'On hit: 30% chance the target bleeds for 3 seconds',
+  'Lifesteal':'On hit: heal a quarter of the damage dealt',
+  'Fury':'Every 3rd swing deals double damage',
+  'Thorns':'When hurt: reflect a quarter of the damage',
+  'Avenger':'When an ally falls: +4 Might (or Magic) and +2 Haste',
+  'Scavenger':'Out of combat: +10% Expedition drop chance for scrolls, cores and Ward Oil while equipped (squad total capped at +40%)'
+};
+const traitSlots=w=>GR[w.g]?GR[w.g].t:0;
+// Cores: optional, farmed from Expedition wins, one can be added to a blank when you start forging
+// Cores sway a weapon's base stats toward a build: one or two stats up, one down. They never add traits or slots. A Might mod also sways Magic on magic weapons.
+const CORES={
+  Brute:{mods:{Might:1.3,Haste:.85},fav:'First Strike, Fury'},
+  Duelist:{mods:{Crit:1.5,Haste:1.1,Defense:.8},fav:'Fury'},
+  Gale:{mods:{Haste:1.3,Might:.85},fav:'Bleed, Lifesteal'},
+  Sentinel:{mods:{Defense:1.3,'Magic Defense':1.3,Might:.8},fav:'Thorns'},
+  Oak:{mods:{Vigor:1.35,Haste:.85},fav:'Rally, Avenger'},
+  Leech:{mods:{Might:1.15,Vigor:1.15,Defense:.8},fav:'Lifesteal'},
+  Vanguard:{mods:{Might:1.15,Defense:1.15,Crit:.75},fav:'Rally, First Strike'}
+};
+const coreText=c=>{const md=CORES[c].mods;return Object.entries(md).map(([k,v])=>`${v>1?'+':'−'}${Math.round(Math.abs(v-1)*100)}% ${k}`).join(', ')+`. Suits ${CORES[c].fav}`};
+
+const innate=w=>[];
+const allTraits=w=>[...(w.traits||[]),...innate(w)];
+const CORE_NAMES=Object.keys(CORES);
+function dropCore(chance){if(!U('assayer'))return '';if(Math.random()>=chance+assayBonus())return '';const c=CORE_NAMES[Math.floor(Math.random()*CORE_NAMES.length)];S.cores[c]=(S.cores[c]||0)+1;return `, ${/^[AEIOU]/.test(c)?'an':'a'} ${c} Core`}
+// Scavenger: each equipped weapon adds 10% x its copy strength, squad total capped at 40%
+const lootBonus=()=>Math.min(.4,S.squad.reduce((a,id)=>{const w=id&&byId(id);if(!w)return a;const n=allTraits(w).filter(t=>t==='Scavenger').length;return a+.1*STACK[Math.min(3,n)]},0));
+/* ---------- Workshop units (bought with ore, Cookie Clicker style: each one costs 15% more) ---------- */
+const UNITS=[
+  {k:'miner',n:'Miner',base:150,d:'Digs ore while the game is open.',ms:[]},
+  {k:'researcher',n:'Researcher',base:60,d:'Studies better tools: +2% ore per tap.',ms:[]},
+  {k:'smith',n:'Blacksmith',base:25,d:'Runs your forge. More Blacksmiths make the anvil easier: a wider glow and a slower marker at milestones.',ms:[[1,'Opens the Forge and Armory'],[5,'Wider glow on the forge bar'],[10,'Slower forge marker'],[20,'Wider glow'],[30,'Slower marker'],[40,'Wider glow'],[50,'Slower marker']]},
+  {k:'shopkeeper',n:'Shopkeeper',base:150,d:'Sells nails and horseshoes from your shopfront: +0.3 gold per second.',ms:[]},
+  {k:'swordsmith',n:'Swordsmith',base:40,arch:'Sword',sig:['Might','Crit'],d:'+3% Might and Crit on the Swords you forge from now on.',ms:[[1,'You can forge Swords']]},
+  {k:'axesmith',n:'Axesmith',base:200,arch:'Axe',sig:['Might','Vigor'],d:'+3% Might and Vigor on the Axes you forge from now on.',ms:[[1,'You can forge Axes']]},
+  {k:'spearwright',n:'Spearwright',base:700,arch:'Spear',sig:['Haste','Might'],d:'+3% Haste and Might on the Spears you forge from now on.',ms:[[1,'You can forge Spears']]},
+  {k:'bowyer',n:'Bowyer',base:2000,arch:'Bow',sig:['Crit','Haste'],d:'+3% Crit and Haste on the Bows you forge from now on.',ms:[[1,'You can forge Bows']]},
+  {k:'staffcarver',n:'Staffcarver',base:6000,arch:'Staff',sig:['Magic','Vigor'],d:'+3% Magic and Vigor on the Staffs you forge from now on.',ms:[[1,'You can forge Staffs']]},
+  {k:'shieldwright',n:'Shieldwright',base:40000,arch:'Shield',sig:['Defense','Magic Defense'],d:'+3% Defense and Magic Defense on the Tower shields you forge from now on.',ms:[[1,'You can forge Tower shields']]},
+  {k:'hammersmith',n:'Hammersmith',base:250000,arch:'Warhammer',sig:['Might','Defense'],d:'+3% Might and Defense on the Warhammers you forge from now on.',ms:[[1,'You can forge Warhammers']]},
+  {k:'merchant',n:'Merchant',base:300,d:'+2% on every sale and order.',ms:[[1,'Opens Orders, 1 customer'],[3,'2nd customer'],[8,'3rd customer'],[15,'4th customer']]},
+  {k:'squire',n:'Squire',base:600,grow:1.07,d:'Trains your party: +0.25% Might for all four heroes.',ms:[[1,'Opens the Barracks for your four heroes'],[30,'Every hero can learn a 1st title'],[60,'2nd title for every hero'],[100,'3rd title for every hero']]},
+  {k:'scribe',n:'Scribe',base:1000,d:'Trades with travelers. More Scribes let you read stronger scrolls.',ms:[[1,'Opens the Library, Etching and Steady scrolls'],[3,'Keen scrolls'],[8,'Daring scrolls'],[12,'Trait scrolls']]},
+  {k:'quartermaster',n:'Quartermaster',base:1500,d:'+1% Expedition gold and ore each, no cap.',ms:[[1,'Replay your last cleared stage to farm it']]},
+  {k:'smelter',n:'Smelter',base:2000,d:'Sells smelting to the town, and cuts 2% ore off every blank (up to −40%).',ms:[]},
+  {k:'assayer',n:'Assayer',base:4000,d:'+2% core and Ward Oil drop chance (up to +30%).',ms:[[1,'Cores start dropping from Expeditions']]},
+  {k:'prospector',n:'Prospector',base:25000,d:'Swings a second pickaxe beside you: each Prospector adds one more full tap of ore to every tap.',ms:[[10,'Auto-pick: an upgrade that swings the pickaxe for you']]},
+  {k:'arcanist',n:'Arcanist',base:3000,d:'Keeps your Sanctum, where every magic weapon (Staffs and Grimoires) is bound instead of forged. More Arcanists make binding easier: a wider window and a slower ring at milestones.',ms:[[1,'Opens the Sanctum'],[5,'Wider binding window'],[10,'Slower binding ring'],[20,'Wider window'],[30,'Slower ring'],[40,'Wider window'],[50,'Slower ring']]},
+  {k:'binder',n:'Bookbinder',base:15000,arch:'Grimoire',sig:['Magic','Haste'],d:'+3% Magic and Haste on the Grimoires you bind from now on.',ms:[[1,'You can bind Grimoires']]}
+];
+const UN=Object.fromEntries(UNITS.map(u=>[u.k,u]));
+const U=k=>(S.units&&S.units[k])||0;
+const unitCost=k=>Math.round(UN[k].base*Math.pow(UN[k].grow||1.15,U(k)));
+const reached=k=>UN[k].ms.filter(([n])=>U(k)>=n).length; // milestones reached
+const ARCH_AT=Object.fromEntries(UNITS.filter(u=>u.arch).map(u=>[u.arch,[u.k,1]])); // each weapon has its own specialist
+const specOf=a=>ARCH_AT[a][0];
+const archOpen=a=>U(ARCH_AT[a][0])>=ARCH_AT[a][1];
+const archsOpen=()=>Object.keys(ARCH).filter(archOpen);
+const archNext=()=>Object.keys(ARCH).filter(a=>!archOpen(a)).sort((x,y)=>unitsToGo(x)-unitsToGo(y))[0];
+const unitsToGo=a=>{const[k,n]=ARCH_AT[a];let c=0;for(let i=U(k);i<n;i++)c+=UN[k].base*Math.pow(UN[k].grow||1.15,i);return c};
+const orderSlots=()=>reached('merchant');
+const squadSlots=()=>4; // the party is always four heroes, ready from the start (Jonathan, 2026-11-16)
+const SCROLL_SCRIBES={Steady:1,Keen:3,Daring:8,Trait:12,Sovereign:25};
+const SOV_TIER=5; // Sovereign scrolls only appear once Starmetal is unlocked (beat the Moonsilver Warden at stage 250)
+const sovOpen=()=>(S.matTier||0)>=SOV_TIER;
+const scrollOpen=g=>U('scribe')>=SCROLL_SCRIBES[g];
+const goldPerSec=()=>U('shopkeeper')*0.3;
+// Each material only holds so many slams (Jonathan, 2026-11-17): Copper 10, Bronze 20, Iron 30, Steel 40, Moonsilver 50, Starmetal 60, then +5 per endless tier.
+const MAT_CAP=[10,20,30,40,50,60];
+const matCap=mat=>{const i=MATN.indexOf(mat);return i<=5?MAT_CAP[i]:60+5*(i-5)};
+const slamLimit=(mat=pick.mat)=>Math.min(maxStrikes(),matCap(mat));
+const blankSize=()=>Math.min(slamLimit(),Math.max(1,pick.size||3));
+const blankCost=(mat,size=blankSize())=>Math.round(MATS[mat].ore*Math.pow(2,size-3)*(1-Math.min(.4,.02*U('smelter'))));
+const qmMult=()=>1+.01*U('quartermaster');
+const assayBonus=()=>Math.min(.3,.02*U('assayer'));
+const tabOpen=t=>t==='sanctum'?U('arcanist')>0:t==='forge'||t==='armory'?U('smith')>0:t==='orders'?U('merchant')>0:t==='barracks'?U('squire')>0:t==='library'?U('scribe')>0:t==='upg'?U('researcher')>0:true;
+const canEtch=w=>U('scribe')>0&&w.state!==1&&(w.res.length<maxSlots(w)||tUsed(w)<traitSlots(w));
+const tUsed=w=>(w.traits||[]).length+(w.tfail||0); // failed Trait scrolls burn a slot too (Jonathan, 2026-11-16)
+const VIG=4,CRITX=8,CRIT_CAP=50; // Vigor and Crit gains are multiplied
+const gainOf=(st,n)=>st==='Vigor'?n*VIG:st==='Crit'?n*CRITX:n;
+const KEY='bb-toy-v1';
+
+let S, tab='mine', F=null, etchId=null, battle=null, toastT=0;
+
+function fresh(){return{titles:[{},{},{},{}],units:{},ore:14,gold:0,renown:0,oil:0,dust:0,pick:0,orderNext:null,bellows:0,slams:0,shop:0,matTier:0,cores:{},drill:0,armor:0,banner:0,bounty:0,lamp:0,hands:0,night:0,ink:0,mendkit:0,stage:1,rating:1000,seed:1337,nid:1,
+  weapons:[],squad:[null,null,null,null],scrolls:{'Steady|Might':2,'Keen|Haste':1,'Trait|First Strike':1},orders:[],t:Date.now(),best:0}}
+
+function load(){
+  let d=null;
+  try{d=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+  load.t=(d&&+d.t)||0; // 0 when this browser has no save yet, so any cloud save wins
+  applySave(d);
+}
+// Save files (Jonathan, 2026-11-17): a copy of the save the player keeps in Files or Drive, so clearing the browser can't lose it.
+const inClaude=()=>!!(window.claude&&window.claude.use); // inside Claude the cloud save covers this; the save-file panel is for the standalone web version
+const backupAgo=()=>{const d=Math.floor((Date.now()-S.lastBackup)/864e5);return d<1?'today':d===1?'yesterday':d+' days ago'};
+const backupDue=()=>!S.lastBackup?(S.stage>5):Date.now()-S.lastBackup>3*864e5;
+async function saveToFile(){S.lastBackup=Date.now();save();const d=new Date(),name=`blacksmith-battles-save-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+  const blob=new Blob([JSON.stringify({game:'blacksmith-battles',v:1,saved:d.toISOString(),S})],{type:'application/json'}),file=new File([blob],name,{type:'application/json'});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Blacksmith Battles save'});render();toast('Save shared. Keep it in Files or Drive.');return}}catch(e){if(e&&e.name==='AbortError'){render();return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);render();toast('Save downloaded')}
+function loadFromFile(f){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result),d=j&&j.S?j.S:j;if(!d||typeof d!=='object'||!d.units)throw 0;F=null;battle=null;applySave(d);repair();save();tab='mine';render();toast(`Loaded save${j.saved?' from '+new Date(j.saved).toLocaleDateString():''}`)}catch(e){toast("That file isn't a Blacksmith Battles save")}};r.readAsText(f)}
+function applySave(d){
+  S=Object.assign(fresh(),d||{});if(d&&!d.units)S.units=null; // old save: repair() grants units
+  if(d&&d.mine&&!d.miners)S.miners=d.mine; delete S.mine;
+  awayGrant((Date.now()-(S.t||Date.now()))/1000);
+  tickOrders(Date.now());
+}
+// Away earnings (Jonathan, 2026-11-16): nothing while the game is closed until the Night shift upgrade (research). Each level = 1 more hour
+// at 10% of automatic income, with no level cap. Also covers a phone that slept with the page open (timers stop, so the gap is caught here).
+// Night shift (Jonathan, 2026-11-17): +1 hour per level up to 12 hours, then each level adds +1% to the away rate (10%, 11%, 12%...), capping at 100% (level 102).
+const NIGHT_MAX=102;
+const nightHours=()=>Math.min(12,S.night||0);
+const nightPct=()=>Math.min(100,10+Math.max(0,(S.night||0)-12));
+function awayGrant(sec){if(sec<30)return;const h=nightHours();if(!h)return;const t=Math.min(sec,h*3600),g=Math.floor(t*orePerSec()*nightPct()/100),gg=Math.floor(t*goldPerSec()*nightPct()/100);
+  if(g>0||gg>0){S.ore+=g;S.gold+=gg;setTimeout(()=>toast(`Night shift: your crew dug ${fmtN(g)} ore${gg?` and made ${fmtN(gg)} gold`:''} while you were away (${Math.round(t/60)} of ${h*60} min)`),400)}}
+function save(){if(!owns())return;S.t=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}cloud.dirty=true}
+/* Cloud save: the browser copy can be wiped (home-screen shortcuts, private tabs), so the save also lives in this
+   viewer's private db doc. The newer of the two wins on load. */
+const cloud={ref:null,dirty:false,busy:false};
+async function cloudPush(){if(!cloud.ref||!cloud.dirty||cloud.busy||!owns())return;cloud.busy=true;cloud.dirty=false;
+  try{await cloud.ref.set({json:JSON.stringify(S),t:S.t})}catch(e){cloud.dirty=true}finally{cloud.busy=false}}
+async function cloudInit(localT){
+  try{
+    if(!window.claude||!window.claude.use)return;
+    const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);if(!db||!user)return;
+    const id=await user.id();if(!id||!owns())return;
+    const ref=db.collection('data/users/'+id).doc('save');
+    const snap=await Promise.race([ref.get(),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000))]);
+    if(!owns())return;
+    const c=snap.exists?snap.data():null;
+    if(c&&typeof c.json==='string'&&+c.t>localT){let d=null;try{d=JSON.parse(c.json)}catch(e){}
+      if(d){F=null;battle=null;applySave(d);repair();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render();toast('Loaded your saved progress')}}
+    cloud.ref=ref;cloud.dirty=true;cloudPush();
+    setInterval(cloudPush,15000);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){save();cloudPush()}});
+    window.addEventListener('pagehide',()=>{save();cloudPush()});
+  }catch(e){}
+}
+
+function rng(seed){let a=seed>>>0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const roll=()=>rng(S.seed++)();
+
+// Every Workshop hire digs ore (Jonathan, 2026-11-16), Cookie Clicker style: pricier units pay more. Payback time per hire is
+// 150 s up to the Miner's price, drops to 100 s around 1,000-2,000 ore (Scribe 10/s, Smelter 20/s), then slowly grows again (cost^0.3)
+// so late units pay huge numbers but take longer to earn back. Multipliers can make the numbers silly later.
+const UNIT_ORE={arcanist:25,prospector:120,smith:.2,swordsmith:.3,researcher:.4,miner:1,shopkeeper:1,axesmith:1.5,merchant:2,squire:2,spearwright:6,scribe:10,quartermaster:15,smelter:20,bowyer:20,assayer:30,staffcarver:45,binder:80,shieldwright:160,hammersmith:600};
+const unitOre=k=>(UNIT_ORE[k]||0)*(1+0.1*((S.mast||{})[k]||0)); // Workshop mastery: +10% per 100 owned (Jonathan, 2026-11-16)
+const orePerSec=()=>Math.round(UNITS.reduce((a,u)=>a+U(u.k)*unitOre(u.k),0)*veinMult()*10)/10;
+// Mastery: every 100 of a unit opens a +10% ore upgrade for that unit, if you also have 10 Researchers per tier. Paid in ore.
+const mastNext=k=>((S.mast||{})[k]||0)+1,mastCost=k=>UN[k].base*1000*Math.pow(10,mastNext(k)-1),mastOpen=k=>U(k)>=100*mastNext(k)&&U('researcher')>=10*mastNext(k);
+const autoCost=()=>Math.round(2000*Math.pow(2,S.autopick||0)); // Auto-pick (Prospector 10): +1 automatic tap per second per level, gold
+const orePerTap=()=>Math.round((1+S.pick)*(1+0.02*U('researcher'))*(1+U('prospector'))*veinMult()*100)/100; // each Prospector adds another full swing
+function syncOrders(){const n=orderSlots();while(S.orders.length<n)S.orders.push(newOrder());if(S.orders.length>n)S.orders.length=n}
+function tickOrders(now){let n=0;while(S.orderNext&&now>=S.orderNext){const i=S.orders.indexOf(null);if(i<0){S.orderNext=null;break}S.orders[i]=newOrder();n++;S.orderNext=S.orders.includes(null)?S.orderNext+ORDER_GAP:null}return n}
+function openSlot(i){S.orders[i]=null;if(!S.orderNext)S.orderNext=Date.now()+ORDER_GAP}
+function fmtCd(){if(!S.orderNext)return 'soon';const s=Math.max(0,Math.ceil((S.orderNext-Date.now())/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`}
+// Blacksmith milestones replace the Bellows upgrade (Jonathan 2026-11-16): 5/20/40 widen the glow 5% each, 10/30/50 slow the marker 7% each (the Grimoire ring uses Bookbinders instead)
+const SMITH_GLOW=[5,20,40],SMITH_SLOW=[10,30,50];
+const zoneW=()=>14+5*SMITH_GLOW.filter(n=>U('smith')>=n).length;
+const smithSlow=()=>1-0.07*SMITH_SLOW.filter(n=>U('smith')>=n).length;
+const maxStrikes=()=>3+(S.slams||0); // blanks start at 3 slams; Hammer drills add slams with no cap
+const GRADE_AT=GR.slice(1).map(x=>x.at); // stars needed for each grade above Crude
+const cost={pick:l=>Math.round(20*Math.pow(1.5,l)),miners:l=>Math.round(40*Math.pow(1.6,l)),bellows:l=>Math.round(40*Math.pow(1.9,l)),slams:l=>Math.round(150*Math.pow(3,l)),shop:l=>Math.round(50*Math.pow(1.75,l)),
+  drill:l=>Math.round(80*Math.pow(1.8,l)),armor:l=>Math.round(80*Math.pow(1.8,l)),banner:l=>Math.round(120*Math.pow(2,l)),bounty:l=>Math.round(60*Math.pow(1.7,l)),
+  lamp:l=>Math.round(100*Math.pow(2,l)),hands:l=>Math.round(120*Math.pow(2,l)),ink:l=>Math.round(70*Math.pow(1.8,l)),mendkit:l=>Math.round(60*Math.pow(1.8,l)),night:l=>Math.round(300*Math.pow(1.8,l))};
+// combat and etching upgrade effects
+const pOf=k=>k==='Steady'||k==='Wild'||k==='Sovereign'?SC[k].p:Math.min(95,SC[k].p+3*S.lamp);
+const crackOf=k=>SC[k].crack?Math.max(5,SC[k].crack-3*S.hands):0;
+const priceOf=k=>Math.round(SC[k].price*(1-0.08*S.ink)*(1-Math.min(.3,.01*U('scribe'))));
+const mendCost=()=>Math.round(100*(1-0.15*S.mendkit));
+const matsOpen=()=>MATN.slice(0,Math.min(MATN.length,(S.matTier||0)+1));
+
+function stats(w){const a=ARCH[w.arch].b,k=MATS[w.mat].m*starMult(starsOf(w)),md=w.core&&CORES[w.core]?CORES[w.core].mods:{},sp=w.id?UN[specOf(w.arch)]:null,sb=sp?1+0.03*(w.spec!=null?w.spec:U(sp.k)):1; // specialist bonus is locked in when forged (Jonathan, 2026-11-16)
+  return ST.map((s,i)=>Math.round(a[i]*(s==='Haste'?Math.min(k,7):k)*(md[s]||(s==='Magic'?md.Might:0)||1)*(sp&&sp.sig.includes(s)?sb:1))+(w.etch[s]||0))} // specialists boost their weapon's two signature stats
+// Power: offense (Might or Magic x2, Crit, Haste x2) + defense (Defense, Magic Defense x0.6, Vigor/4) + traits (15 each, copies with falloff).
+// With a squad slot, offense is halved when the weapon can't reach from there (it waits until the line steps forward).
+function power(w,slot){const[m,mg,cr,h,df,md,v]=stats(w),g=df+md*.6;let off=(m+mg)*2+Math.min(CRIT_CAP,cr)+h*2;if(slot!=null&&slot+1>REACH[w.arch])off*=.5;
+  const cnt={};allTraits(w).filter(t=>t!=='Scavenger').forEach(t=>cnt[t]=(cnt[t]||0)+1);const tr=Object.values(cnt).reduce((a,n)=>a+15*STACK[Math.min(3,n)],0);
+  return Math.round(off+g+v/4+tr)}
+const squadPower=sq=>sq.slice(0,squadSlots()).reduce((a,id,i)=>{const w=id&&byId(id);return a+(w?power(w,i):0)},0);
+function maxSlots(w){return GR[w.g].s-(w.state===2?1:0)}
+const wName=w=>`${w.mat} ${w.arch}`;
+const byId=id=>S.weapons.find(w=>w.id===id);
+const ups=w=>w.res.filter(r=>r==='ok').length;
+
+function newOrder(){
+  const mats=matsOpen(),archs=archsOpen().length?archsOpen():['Sword'],arch=archs[Math.floor(Math.random()*archs.length)];
+  const mat=mats[Math.floor(Math.random()*mats.length)],minG=1+Math.floor(Math.random()*2);
+  return{arch,mat,minG,mult:+(1.5+0.25*minG).toFixed(2),ren:2+minG*2,who:['A caravan guard','The town watch','A wandering duelist','A noble\'s steward','A monster hunter','The harbor master'][Math.floor(Math.random()*6)]};
+}
+// Baseline: 1 ore of blank = 1 gold for a Superior weapon. Fine sells at a loss, Masterwork and Exalted at a profit; etching moves it (see etchMult).
+// Stars = the forging score (Perfect 2, Good 1). Every star adds 2% to the weapon's stats, and the price follows stars:
+// 4 stars (Fine) sells for one 3-slam blank of ore, and every 2 more stars doubles it (a Perfect slam pays for its doubled ore).
+const starsOf=w=>w.stars!=null?w.stars:(w.g?GRADE_AT[w.g-1]:2); // older weapons and enemies: their grade's minimum
+const starBonus=w=>Math.max(0,starsOf(w)-(w.g?GRADE_AT[w.g-1]:0)); // stars above the grade's minimum; the grade itself carries the rest
+// Etching and price (Jonathan, 2026-11-16): price follows what the scrolls did to the weapon. Every 1% of Power gained (or lost, e.g. a bad Wild roll) moves
+// the price 2%, and every failed slot (etch or trait) takes 10% off a clean weapon's price.
+const fails=w=>w.res.filter(r=>r==='no').length+(w.tfail||0);
+const etchMult=w=>{const clean=power({...w,etch:{},traits:[]}),now=power(w);return Math.max(.2,(1+2*(now/Math.max(1,clean)-1))*(1-0.1*fails(w)))};
+const priceMult=n=>Math.pow(2,(Math.min(n,20)-4)/2)*Math.pow(1.03,Math.max(0,n-20)); // x2 per 2 stars up to 20, then +3% a star
+const sellPrice=w=>Math.max(1,Math.round(MATS[w.mat].ore*priceMult(starsOf(w))*etchMult(w)*(w.state===1?.5:1)*(1+0.15*S.shop+0.02*U('merchant'))));
+const fits=(w,o)=>o.arch===w.arch&&o.mat===w.mat&&w.g>=o.minG&&w.state!==1;
+const held=w=>S.squad.includes(w.id)||!!w.locked; // equipped or locked weapons are never sold or delivered (Jonathan, 2026-11-17)
+const orderFor=w=>held(w)?-1:S.orders.findIndex(o=>o&&fits(w,o));
+
+/* ---------- rendering ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function chips(){
+  $('#res').innerHTML=[
+    ['Ore',S.ore<1e6?Math.floor(S.ore):fmtN(S.ore)],['Gold',S.gold<1e6?Math.floor(S.gold):fmtN(S.gold)],['Renown',S.renown],['Rating',S.rating] // Ward Oil lives in the Library and Etch screens (Jonathan, 2026-11-17)
+  
+  ].map(([k,v])=>`<span class="chip"><small>${k}</small>${v}</span>`).join('');
+}
+// ---------- world strip ----------
+// Left to right: the Mine at the cliff edge, the town (Workshop, study, Forge, Sanctum, market, Armory, Barracks), and the town gate where Expeditions leave.
+const LOCS=[
+  {t:'mine',n:'Mine',sky:'linear-gradient(#141020,#2a1f2c)',light:'#ffb35c',bld:'cave',crew:()=>U('miner')+U('prospector'),col:'#c08850'},
+  {t:'shop',n:'Workshop',sky:'linear-gradient(#1a1626,#33262a)',light:'#ffcf7a',bld:'house',crew:()=>Math.round(UNITS.reduce((a,u)=>a+U(u.k),0)/8),col:'#b9a27c'},
+  {t:'upg',n:'Upgrades',sky:'linear-gradient(#18172a,#2c2634)',light:'#d9e6ff',bld:'study',crew:()=>U('researcher'),col:'#8fa7c4'},
+  {t:'forge',n:'Forge',sky:'linear-gradient(#1c1420,#3a2420)',light:'#ff7a2e',bld:'forge',crew:()=>U('smith'),col:'#d9773c'},
+  {t:'sanctum',n:'Sanctum',sky:'linear-gradient(#140f26,#2b1f3d)',light:'#b69cff',bld:'tower',crew:()=>U('arcanist'),col:'#a58bf0'},
+  {t:'orders',n:'Orders',sky:'linear-gradient(#1a1626,#382a26)',light:'#ffd36b',bld:'stall',crew:()=>U('merchant')+(S.orders||[]).filter(Boolean).length,col:'#e9c45e'},
+  {t:'armory',n:'Armory',sky:'linear-gradient(#171624,#2b2a30)',light:'#9fb6cc',bld:'house',crew:()=>Math.min(8,(S.weapons||[]).length),col:'#9fb6cc'},
+  {t:'library',n:'Library',sky:'linear-gradient(#141626,#262a3a)',light:'#8fd0ff',bld:'study',crew:()=>U('scribe'),col:'#8fb0d8'},
+  {t:'barracks',n:'Barracks',sky:'linear-gradient(#18162a,#2c2430)',light:'#ffb35c',bld:'barracks',crew:()=>U('squire'),col:'#c9b28a'},
+  {t:'fight',n:'Fight',sky:'linear-gradient(#1a1222,#40242a)',light:'#ef5f57',bld:'gate',crew:()=>S.squad.filter(Boolean).length,col:'#ff8a3d'}];
+const BLD={
+  cave:'<div style="position:absolute;left:-60px;bottom:0;width:150px;height:96px;background:#2b2320;border-radius:60px 60px 0 0"></div><div style="position:absolute;left:-10px;bottom:0;width:58px;height:58px;background:#0c0908;border-radius:30px 30px 0 0"></div><i style="position:absolute;left:-40px;bottom:60px;width:5px;height:5px;background:#e9a35a;border-radius:1px;box-shadow:30px 14px 0 #e9a35a,64px -10px 0 #ffd27a"></i>',
+  house:'<div style="width:96px;height:52px;background:#3a2f28"></div><div style="position:absolute;left:-8px;top:-30px;width:112px;height:32px;background:#4a3428;clip-path:polygon(50% 0,100% 100%,0 100%)"></div><div style="position:absolute;left:38px;bottom:0;width:20px;height:28px;background:#120e0b"></div>',
+  study:'<div style="width:70px;height:74px;background:#33303c"></div><div style="position:absolute;left:-6px;top:-26px;width:82px;height:28px;background:#423d4d;clip-path:polygon(50% 0,100% 100%,0 100%)"></div><div style="position:absolute;left:24px;top:14px;width:22px;height:16px;background:#d9e6ff;opacity:.6"></div>',
+  forge:'<div style="width:110px;height:50px;background:#3b2c24"></div><div style="position:absolute;left:78px;top:-44px;width:16px;height:46px;background:#2c221d"></div><div style="position:absolute;left:-6px;top:-24px;width:96px;height:26px;background:#4a3024;clip-path:polygon(0 100%,18% 0,100% 0,100% 100%)"></div><div style="position:absolute;left:34px;bottom:0;width:28px;height:30px;background:#ff7a2e;box-shadow:0 0 18px #ff7a2e"></div>',
+  tower:'<div style="width:48px;height:100px;background:#2d2640"></div><div style="position:absolute;left:-6px;top:-34px;width:60px;height:36px;background:#3d2f5c;clip-path:polygon(50% 0,100% 100%,0 100%)"></div><div style="position:absolute;left:17px;top:22px;width:14px;height:22px;border-radius:7px 7px 0 0;background:#b69cff;box-shadow:0 0 14px #b69cff"></div>',
+  stall:'<div style="width:100px;height:40px;background:#3a2f28"></div><div style="position:absolute;left:-6px;top:-18px;width:112px;height:18px;background:repeating-linear-gradient(90deg,#c0503a 0 14px,#e9d8b8 14px 28px);border-radius:3px"></div>',
+  barracks:'<div style="width:130px;height:44px;background:#3a3028"></div><div style="position:absolute;left:-6px;top:-18px;width:142px;height:20px;background:#4a3a2c;clip-path:polygon(6% 0,94% 0,100% 100%,0 100%)"></div><div style="position:absolute;left:58px;top:-56px;width:2px;height:40px;background:#8a7a66"></div><div style="position:absolute;left:60px;top:-56px;width:20px;height:14px;background:#c0503a"></div>',
+  gate:'<div style="width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:96px;bottom:0;width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:30px;bottom:44px;width:70px;height:26px;background:#3a3434"></div><div style="position:absolute;left:34px;bottom:0;width:62px;height:44px;background:#0b0809;border-radius:31px 31px 0 0"></div>'};
+let worldIdx=-1;
+function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L=>`<div class="loc" data-loc="${L.t}"><div class="sky" style="background:${L.sky}"></div><div class="glow" style="left:calc(28% - 30px);background:${L.light}"></div><div class="bld" style="left:22%">${BLD[L.bld]}</div><div class="crowd"></div><div class="gnd"></div><div class="sign">${L.n}</div></div>`).join('')}
+function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
+  const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
+  if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
+    if(you&&worldIdx>=0){you.classList.toggle('left',i<worldIdx);you.classList.add('walk');clearTimeout(updateWorld.t);updateWorld.t=setTimeout(()=>you.classList.remove('walk'),Math.min(1600,450+150*dist))}worldIdx=i}
+  LOCS.forEach((L,k)=>{const el=st.children[k];if(!el)return;const open=tabOpen(L.t);el.classList.toggle('locked',!open);el.querySelector('.sign').textContent=open?L.n:'???';
+    const n=open?Math.min(CROWD_MAX,L.crew()|0):0,c=el.querySelector('.crowd');if(+c.dataset.n!==n){c.dataset.n=n;c.innerHTML=crowdHtml(n,L.col)}})}
+// Up to 60 figures per spot (one per hire), packed into rows that step back and darken, each bobbing on its own beat. CSS animations stay smooth at this count.
+const CROWD_MAX=60,PER_ROW=15;
+function crowdHtml(n,col){let h='';for(let j=0;j<n;j++){const row=Math.floor(j/PER_ROW),k=j%PER_ROW,x=(k*11+(row%2)*5+((j*37)%5))*.92,y=row*6;h+=`<span class="fig" style="left:${x}px;bottom:${y}px;z-index:${10-row};background:${col};filter:brightness(${1-row*.16});animation-delay:${-((j*.37)%1.8).toFixed(2)}s;animation-duration:${(1.5+(j%5)*.15).toFixed(2)}s"></span>`}return h}
+function render(){
+  chips();
+  if(!tabOpen(tab))tab='mine';
+  document.querySelectorAll('.tab').forEach(b=>{const open=tabOpen(b.dataset.t);b.disabled=!open;b.textContent=open?b.dataset.n:'???';b.setAttribute('aria-selected',b.dataset.t===tab)});
+  updateWorld();
+  const v=$('#view');
+  if(tab==='mine')v.innerHTML=mineView();
+  if(atStation()){syncPick();v.innerHTML=forgeView()}
+  if(tab==='orders')v.innerHTML=ordersHtml();
+  if(tab==='armory')v.innerHTML=armoryView();
+  if(tab==='library')v.innerHTML=scriptorium()||'<section class="panel"><div class="empty">No scrolls yet.</div></section>';
+  orderLabel();
+  if(tab==='fight')v.innerHTML=fightView();
+  if(tab==='upg')v.innerHTML=upgView();
+  if(tab==='shop')v.innerHTML=shopView();
+  if(tab==='barracks')v.innerHTML=barracksView();
+  if(atStation())drawTrack();
+  if(tab==='fight'&&battle)drawArena();
+}
+
+function orderLabel(){
+  const ready=S.orders.filter(o=>o&&S.weapons.some(x=>fits(x,o)&&!held(x))).length;
+  const ot=document.querySelector('[data-t="orders"]');if(ot)ot.textContent=ready?`Orders (${ready} ready)`:'Orders';
+}
+// Barracks: titles belong to the hero (party position), not the weapon. Bought with gold, ranks 1-3.
+const TITLES={
+  Vanguard:{n:'Vanguard',d:r=>`+${10*r}% Defense and Magic Defense while in the front slot, but −${2*r}% Haste`},
+  Marksman:{n:'Marksman',d:r=>`+${4*r}% Crit while not in front, but −${4*r}% Defense and Magic Defense`},
+  Berserker:{n:'Berserker',d:r=>`+${8*r}% Might and Magic while below half health, but −${2*r}% Vigor`},
+  Medic:{n:'Field Medic',d:r=>`+${12*r}% healing received, but −${2*r}% Might and Magic`},
+  Drillmaster:{n:'Drillmaster',d:r=>`+${5*r}% Haste for the hero behind at the start of a fight, but −${3*r}% own Might and Magic`}
+};
+const TITLE_MAX=3,titleSlots=()=>[30,60,100].filter(n=>U('squire')>=n).length,titleCost=r=>500*Math.pow(5,r-1); // r = rank being bought
+function barracksView(){
+  const n=titleSlots(),lab=['Hero 1 · front','Hero 2','Hero 3','Hero 4 · back'];
+  return `<section class="panel">${n<3?`<p class="note" style="margin-top:0">Keep training Squires to earn ${['a first','another','a final'][n]} title slot.</p>`:''}
+  <div class="squad" style="grid-template-columns:1fr">${S.titles.map((tt,h)=>{const w=byId(S.squad[h]),held=Object.keys(tt);
+    return `<div class="sq ${held.length?'full':''}"><span class="lbl">${lab[h]}</span><b>${w?wName(w):'No weapon'}</b>
+    ${held.map(k=>{const r=tt[k];return `<div class="tline"><div><b>${TITLES[k].n} ${'I'.repeat(r)}</b><div class="note">${TITLES[k].d(r)}</div></div><div class="row">${r<TITLE_MAX?`<button class="b sm primary" data-rankup="${h}|${k}" ${S.gold<titleCost(r+1)?'disabled':''}>Rank ${r+1} · ${fmtN(titleCost(r+1))} gold</button>`:'<span class="note">Max rank</span>'}<button class="b sm" data-forget="${h}|${k}" title="Forget this title (no refund)">✕</button></div></div>`}).join('')}
+    ${held.length<n?`<div class="note" style="margin-top:6px">Learn a title · ${fmtN(titleCost(1))} gold</div><div class="seg" style="margin-top:4px">${Object.keys(TITLES).filter(k=>!tt[k]).map(k=>`<button data-learn="${h}|${k}" title="${TITLES[k].d(1)}" ${S.gold<titleCost(1)?'disabled':''}>${TITLES[k].n}</button>`).join('')}</div>`:n?'':`<span class="note">No title slots yet</span>`}</div>`}).join('')}</div>
+  <p class="note" style="margin:12px 0 0;cursor:pointer" data-finfo="titles" role="button">${fInfo==='titles'?'▴':'ⓘ'} What the titles do</p>${fInfo==='titles'?Object.keys(TITLES).map(k=>`<p class="note" style="margin:4px 0"><b>${TITLES[k].n}:</b> ${TITLES[k].d(1)}, per rank.</p>`).join(''):''}</section>`;
+}
+// Cookie Clicker-style reveal: hires appear one at a time. The next one shows up once you own the one before it
+// and have about half its price in ore. Milestones stay hidden until you hit them.
+const REVEAL=['smith','swordsmith','miner','researcher','shopkeeper','merchant','squire','axesmith','scribe','spearwright','quartermaster','bowyer','smelter','arcanist','staffcarver','assayer','binder','prospector','shieldwright','hammersmith'];
+// Each hire only shows up once you've used what the previous ones opened: hire counts plus things you've done
+// (forged, sold, etched, Expedition stages). The player never sees the numbers, only a vague hint.
+// Requirement keys: u:{unit:n}, made:{arch:n}, total (weapons forged), sold (sold or delivered), etched (scrolls read), stage.
+const REQ={ // every unlock needs at least 5 of each required hire (Jonathan, 2026-11-16)
+  swordsmith:{u:{smith:5}},
+  miner:{u:{swordsmith:5},made:{Sword:3}},
+  researcher:{u:{miner:5},total:5},
+  shopkeeper:{u:{researcher:5},sold:5},
+  merchant:{u:{shopkeeper:5,swordsmith:5},made:{Sword:8}},
+  squire:{u:{merchant:5},sold:12},
+  axesmith:{u:{squire:5},stage:3},
+  scribe:{u:{axesmith:5},made:{Axe:5}},
+  spearwright:{u:{scribe:5},etched:5,stage:6},
+  quartermaster:{u:{spearwright:5},made:{Spear:4},stage:8},
+  bowyer:{u:{quartermaster:5},stage:11},
+  smelter:{u:{bowyer:5},made:{Bow:5}},
+  arcanist:{u:{smelter:5},total:35,stage:14},
+  staffcarver:{u:{arcanist:5},total:40,stage:16},
+  assayer:{u:{staffcarver:5},made:{Staff:4},stage:15},
+  binder:{u:{assayer:5},stage:25},
+  prospector:{u:{binder:5},total:80,stage:30},
+  shieldwright:{u:{binder:5},made:{Grimoire:4},stage:41},
+  hammersmith:{u:{shieldwright:5},made:{Shield:5},stage:60}};
+const tally=()=>{if(!S.tally)S.tally={made:{},total:0,sold:0,etched:0};return S.tally};
+function reqGaps(k){const r=REQ[k]||{},t=tally(),g=[];
+  for(const[u,n]of Object.entries(r.u||{}))if(U(u)<n)g.push(`Keep hiring ${UN[u].n}s.`);
+  // No instant unlocks (Jonathan, 2026-11-16): once the hires are in place, the next unit also needs some work done AFTER that point:
+  // 2 Fine+ weapons forged, 1 new Expedition stage, or 30 taps at the vein. Snapshot taken the first moment the hire part is met.
+  if(!g.length){S.reqMet=S.reqMet||{};const now={total:t.total,stage:S.stage,taps:t.taps||0},m=S.reqMet[k]||(S.reqMet[k]=now);
+    if(now.total-m.total<2&&now.stage-m.stage<1&&now.taps-m.taps<30)g.push('Put your newest hires to work.')}
+  for(const[a,n]of Object.entries(r.made||{}))if((t.made[a]||0)<n)g.push(`Forge more Fine or better ${a==='Shield'?'Tower shield':a}s.`);
+  if(r.total&&t.total<r.total)g.push('Keep forging Fine or better weapons.');
+  if(r.sold&&t.sold<r.sold)g.push('Sell or deliver more weapons.');
+  if(r.etched&&t.etched<r.etched)g.push('Read more scrolls.');
+  if(r.stage&&S.stage<r.stage)g.push('Push further on Expeditions.');
+  return g}
+function revealUnits(){if(!S.seen)S.seen={};let news=[];for(const k of REVEAL)if(U(k)>0)S.seen[k]=1;
+  for(let i=0;i<REVEAL.length;i++){const k=REVEAL[i];if(S.seen[k])continue;
+    if(i===0||(!reqGaps(k).length&&S.ore>=UN[k].base*.5)){S.seen[k]=1;if(i>0)news.push(UN[k].n)}else break}
+  return news}
+const nextHint=()=>{const k=REVEAL.find(k=>!S.seen||!S.seen[k]);if(!k)return '';const g=reqGaps(k);return g.length?g.join(' '):'Save up some ore.'};
+function shopView(){revealUnits();
+  const shown=REVEAL.filter(k=>S.seen[k]).map(k=>UN[k]),more=REVEAL.some(k=>!S.seen[k]);
+  return `<section class="panel">
+  <div class="orders" id="units">${shown.map(unitRow).join('')}${more?`<div class="order" style="opacity:.5"><div><b>???</b><div class="note">Someone new will come looking for work. ${nextHint()}</div></div></div>`:''}</div></section>`;
+}
+let uOpen=null;
+const fmtR=n=>n<100?String(Math.round(n*10)/10):fmtN(n);
+function unitRow(u){const c=unitCost(u.k),got=u.ms.filter(([n])=>U(u.k)>=n),more=got.length<u.ms.length,open=uOpen===u.k,each=Math.round(unitOre(u.k)*100)/100,tot=Math.round(U(u.k)*unitOre(u.k)*10)/10;
+  return `<div class="order"><div class="uhead" data-uinfo="${u.k}" role="button" aria-expanded="${open}"><div class="uline"><b>${u.n}</b> ×${U(u.k)} · <span style="color:var(--gold)">${fmtR(each)} ea · ${fmtR(tot)}/s</span> <span class="chev">${open?'▴':'▾'}</span></div>
+    ${more&&!open?`<div class="note" style="color:var(--muted)">? More to discover</div>`:''}
+    ${open?`<div class="note">${u.d}</div>${got.length||more?`<div class="note">${got.map(([n,t])=>`<span style="color:var(--good)">✓ ${t}</span>`).join(' · ')}${more?`${got.length?' · ':''}<span style="color:var(--muted)">? More to discover</span>`:''}</div>`:''}`:''}</div>
+    <button class="b sm ${S.ore>=c?'primary':''}" data-hire="${u.k}" ${S.ore<c?'disabled':''}>${fmtN(c)} ore</button></div>`}
+function shopRefresh(){document.querySelectorAll('[data-hire]').forEach(b=>{const c=unitCost(b.dataset.hire);b.disabled=S.ore<c;b.classList.toggle('primary',S.ore>=c)})}
+// Upgrades are researched: each one appears at a Researcher count (hidden from the player).
+// Research runs through the systems in play order (Mine, Forge, Sales, Combat, Etching), then loops back to the top
+// and deepens each one: a later step raises an upgrade's level cap. M = no research cap (the upgrade's own cap applies).
+const M=999,RESEARCH=[
+  [1,'Opens Upgrades: Sturdier pick',{pick:5}],[2,'Hammer drills',{slams:2}],[3,'Shopfront',{shop:3}],[4,'Drill yard',{drill:3}],[5,'Scribe\'s lamp',{lamp:2}],
+  [7,'Deeper Sturdier pick and Night shift',{pick:10,night:M}],[9,'Deeper Hammer drills',{slams:4}],[11,'Deeper Shopfront',{shop:6}],[13,'Padded armor and deeper Drill yard',{armor:4,drill:6}],[15,'Steady hands and a brighter lamp',{hands:3,lamp:4}],
+  [18,'Master Sturdier pick',{pick:M}],[21,'Master Hammer drills',{slams:M}],[24,'Master Shopfront',{shop:M}],[27,'War banner, Bounty board, master Combat',{banner:M,bounty:M,drill:M,armor:M}],[30,'Ink supplier, Mender\'s kit, master Etching',{ink:M,mendkit:M,lamp:M,hands:M}]];
+const resCap=k=>{let c=0;for(const[n,,caps]of RESEARCH)if(U('researcher')>=n&&caps[k]!=null)c=caps[k];return c};
+const upgOpen=k=>resCap(k)>0;
+function upgRow(k,name,desc,cap){if(!upgOpen(k))return '';const lv=S[k],c=cost[k](lv),rc=resCap(k),full=cap&&lv>=cap,held=!full&&lv>=rc;return `<div class="order"><div><b>${name}</b> · level ${lv}<div class="note">${desc}</div></div><button class="b sm" data-up="${k}" ${S.gold<c||full||held?'disabled':''}>${full?'Maxed':held?'Needs research':c+' gold'}</button></div>`}
+UN.researcher.ms=RESEARCH.map(([n,t])=>[n,t]);
+function mineUpgrades(){return autoRow()+mastRows()+upgRow('pick','Sturdier pick',`${orePerTap()} ore per tap now, +1 per level`)+upgRow('night','Night shift',`While the game is closed your crew earns ${nightPct()}% of its automatic ore and gold${nightHours()?`, for up to ${nightHours()} hour${nightHours()>1?'s':''} now`:''}. ${nightHours()<12?'+1 hour per level up to 12 hours, then +1% per level up to 100%':nightPct()<100?'+1% per level, up to 100%':'Maxed: your crew works the full night'}`,NIGHT_MAX)}
+function mineView(){
+  return `<div class="grid2"><section class="panel">
+  <div class="dig"><button class="vein" id="tapore"><span class="big">Ore vein</span><span class="pertap">+${fmtN(orePerTap())} per tap</span></button></div>
+  <p class="autorate">Automatic: <b>${fmtR(orePerSec())}</b> ore/s</p>
+  ${U('smith')?'':`<p class="note" style="padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">Dig ${UN.smith.base} ore, then hire your first Blacksmith in the Workshop to open the forge.</p>`}</section>
+  </div>
+  ${inClaude()?`<p class="note" style="text-align:right;margin-top:10px"><button class="b sm" id="reset">${resetArm?'Click again to erase everything':'Start over'}</button></p>`:`<section class="panel" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h2>Save file</h2><span class="note">${S.lastBackup?`Last backup ${backupAgo()}`:'Never backed up'}</span></div>
+  ${backupDue()?`<p class="note" style="margin:0;color:var(--gold)">Save a copy now and then, so a cleared browser can't wipe this game.</p>`:''}
+  <div class="row"><button class="b primary" id="savefile">Save to file</button><button class="b" id="loadfile">Load from file</button><input type="file" id="loadinput" accept=".json,application/json" hidden></div>
+  <p class="note" style="text-align:right;margin:0"><button class="b sm" id="reset">${resetArm?'Click again to erase everything':'Start over'}</button></p></section>`}`;
+}
+function forgeHint(){if(!archsOpen().length)return 'No patterns yet';const c=blankCost(pick.mat); return S.ore>=c?`Tap the forge to heat a ${blankSize()}-slam ${pick.mat} blank (${fmtN(c)} ore)`:`Need ${fmtN(c)} ore. Dig in the Mine.`}
+let pick={arch:'Sword',mat:'Copper',core:null,size:null},fInfo=null;
+function slider(key,opts,cur,label,sub,info){const i=Math.max(0,opts.indexOf(cur)),pv=opts[i-1],nx=opts[i+1],dis=F?'disabled':'';
+  return `<div class="stepper slider"><button class="b" ${pv!==undefined?`data-${key}="${pv}"`:''} aria-label="Previous" ${pv===undefined||F?'disabled':''}>‹</button><div class="sv" ${info?`data-finfo="${key}" role="button"`:''}><b>${label}</b>${sub?`<span>${sub}</span>`:''}</div><button class="b" ${nx!==undefined?`data-${key}="${nx}"`:''} aria-label="Next" ${nx===undefined||F?'disabled':''}>›</button></div>${info&&fInfo===key?`<p class="note" style="text-align:center;margin:6px 0 0">${info}</p>`:''}`}
+function syncPick(){if(F)return;if(MATN.indexOf(pick.mat)>(S.matTier||0))pick.mat=MATN[S.matTier||0];const mine=archsOpen().filter(a=>stationOf(a)===tab);if(mine.length&&stationOf(pick.arch)!==tab)pick.arch=mine[0]}
+function forgeView(){
+  const mats=Object.keys(MATS),mg=tab==='sanctum',here=archsOpen().filter(a=>stationOf(a)===tab);
+  return `<div class="grid2">
+  <section class="panel anvil">
+    <div><h3>Pattern</h3>${here.length?slider('arch',here,pick.arch,pick.arch,'',`${ARCH[pick.arch].note}${U(specOf(pick.arch))>1?` Your ${UN[specOf(pick.arch)].n}s add +${3*U(specOf(pick.arch))}% ${UN[specOf(pick.arch)].sig.join('/')}.`:''}`):mg?'<span class="note">Your Arcanist keeps the Sanctum but has no patterns yet. Hire a Staffcarver or a Bookbinder in the Workshop to bind something.</span>':'<span class="note">Your Blacksmith has a forge but no patterns. Hire a weapon specialist in the Workshop to forge something.</span>'}</div>
+    <div><h3>Material</h3>${slider('mat',mats.slice(0,(S.matTier||0)+1),pick.mat,pick.mat,`holds ${matCap(pick.mat)} slams`,'')}</div>
+    ${true?`<div><h3>Blank size</h3><div class="stepper"><button class="b" data-size="${blankSize()-1}" aria-label="Fewer slams" ${F||blankSize()<=1?'disabled':''}>−</button><div class="sv"><b>${blankSize()}</b><span>slams</span></div><button class="b" data-size="${blankSize()+1}" aria-label="More slams" ${F||blankSize()>=slamLimit()?'disabled':''}>+</button></div><p class="stepcost">${fmtN(blankCost(pick.mat))} ore</p>
+    ${blankSize()>=slamLimit()&&maxStrikes()>matCap(pick.mat)?`<p class="note" style="margin:4px 0 0;text-align:center;color:var(--gold)">${pick.mat} can only take ${matCap(pick.mat)} slams. Your Hammer drills allow ${maxStrikes()}: unlock a stronger metal to use them.</p>`:''}
+    </div>`:''}
+    <div><h3>Core</h3>${(()=>{const own=CORE_NAMES.filter(c=>S.cores[c]>0);if(pick.core&&!own.includes(pick.core))pick.core=null;return slider('core',['',...own],pick.core||'',pick.core||'None',pick.core?`×${S.cores[pick.core]}`:'',pick.core?`${pick.core} Core: ${coreText(pick.core)}. Used up when you start.`:own.length?'Optional. A core sways the weapon\'s stats toward a build and is used up when you start.':(U('assayer')?'No cores yet. They drop from Expedition wins and replays.':'No cores yet.'))})()}</div>
+    <div class="track ${F?'':'idle'} ${(F?F.ring:isMagic(pick.arch))?'ring':''}" id="track">${(F?F.ring:isMagic(pick.arch))?`<div class="rune" id="rune" style="left:50%;top:50%"><div class="rtarget"></div><div class="aring" id="aring" style="transform:scale(2)"></div><b>✦</b></div>`:`<div class="zone" id="zone"><i></i></div><div class="marker" id="marker"></div>`}<div class="sparks" id="sparks"></div>${F?'':`<div class="tlabel" id="forgehint">${forgeHint()}</div>`}</div>
+    <div class="row" style="justify-content:space-between">
+      <div class="pips" id="pips">${pipsHtml()}</div>
+      ${F?`<span class="row" style="gap:6px"><button class="b" id="quench" title="Finish now and keep your score">Quench</button><button class="b primary" id="strike">${F.ring?'Bind':'Strike'} (Space)</button></span>`:''}
+    </div>
+    <div class="callout" id="callout">${F?(F.ring?'Tap when the ring closes onto the rune':'Strike when the marker crosses the glow'):''}</div>
+    <p class="note">Perfect 2 stars, Good 1. From the 5th Perfect in a row each is worth one more (3, 4, 5...). A miss costs a third of your stars, so Quench when you're happy. Best possible: ${maxStars(blankSize())} stars, ${GR[gradeOf(maxStars(blankSize()))].n}.</p>
+  </section></div>`;
+}
+function ordersHtml(){
+  return `<section class="panel"><div class="row" style="justify-content:space-between"><span class="note">New customer 2 min after one leaves</span></div>
+  <div class="orders">${S.orders.map((o,i)=>{if(!o)return `<div class="order" style="opacity:.7"><div><b>Open slot</b><div class="note">Next customer in <span class="cd">${fmtCd()}</span></div></div></div>`;const w=S.weapons.find(x=>fits(x,o)&&!held(x));
+    return `<div class="order"><div><b>${o.mat} ${o.arch}</b>, ${GR[o.minG].n} or better<div class="note">${esc(o.who)} pays x${o.mult} and +${o.ren} renown</div></div><div class="row" style="flex-wrap:nowrap">${w?`<button class="b sm primary" data-deliver="${w.id}">Deliver</button>`:`<button class="b sm" data-forgeorder="${i}" ${F?'disabled':''}>Forge this</button>`}<button class="b sm" data-skip="${i}" title="Turn this customer away">Turn away</button></div></div>`}).join('')}</div></section>`;
+}
+function pipsHtml(){const r=F?F.res:[];let st=0;return Array.from({length:F?F.size:blankSize()},(_,i)=>{const x=r[i];if(x==='P')st++;else st=0;return `<span class="pip ${x==='P'?'p':x==='G'?'g':x?'m':''}">${x==='P'?perfectStars(st):x==='G'?'1':x?'0':''}</span>`}).join('')}
+
+let statOpen={id:null,st:null};
+function statInfo(n,v,w){
+  const etched=w.etch[n]?` Scrolls have added +${w.etch[n]}.`:'';
+  const T={
+    Might:`<b>Might ${v}</b>: physical attack. How hard each swing hits, cut by the target's Defense.${w.arch&&atkStat(w.arch)==='Magic'?' This is a magic weapon, so Might does nothing here.':''}`,
+    Magic:`<b>Magic ${v}</b>: magic attack. How hard each spell hits, cut by the target's Magic Defense. Staffs heal allies for about 1.2x Magic when someone is hurt.${w.arch&&atkStat(w.arch)==='Might'?' This is a physical weapon, so Magic does nothing here.':''}`,
+    Crit:`<b>Crit ${v}</b>: critical hit chance. ${Math.min(CRIT_CAP,v)}% of hits deal 1.75x damage (capped at ${CRIT_CAP}%). Doesn't boost heals.${v>CRIT_CAP?' Points past the cap do nothing.':''}`,
+    Haste:`<b>Haste ${v}</b>: attack speed. An attack meter fills by Haste each tick and the weapon swings when it reaches 100, so twice the Haste means twice as many swings. A weapon waiting out of reach keeps its meter full.`,
+    Defense:`<b>Defense ${v}</b>: cuts physical hits (Might). It's measured against the size of the hit: a hit as big as your Defense loses about 34%, a hit twice as big about 21%.`,
+    'Magic Defense':`<b>Magic Defense ${v}</b>: cuts magic hits (Magic). It's measured against the size of the hit: a hit as big as your Magic Defense loses about 34%, a hit twice as big about 21%.`,
+    Vigor:`<b>Vigor ${v}</b>: health. The weapon falls when this hits 0, and the line steps forward.`
+  };
+  return T[n]+etched+' <span class="note">Tap again to close.</span>';
+}
+function wepCard(w){
+  const s=stats(w),slots=maxSlots(w),oi=orderFor(w),inSq=S.squad.includes(w.id);
+  const base=ARCH[w.arch].b,k=MATS[w.mat].m*starMult(starsOf(w));
+  const slotHtml=Array.from({length:slots},(_,i)=>`<span class="slot ${w.res[i]==='ok'?'ok':w.res[i]?'no':''}"></span>`).join('');
+  return `<article class="wep ${inSq?'eq':''} ${w.state===1?'cr':''}">
+    <div class="hd"><span class="nm">${wName(w)}${ups(w)?` <span style="color:var(--good)">+${ups(w)}</span>`:''}</span><span>${w.core?`<span class="badge" style="color:var(--gold);border-color:var(--gold)" title="${esc(CORES[w.core]?coreText(w.core):'')}">${w.core} core</span> `:''}<span class="badge g${w.g}">${GR[w.g].n} ★${starsOf(w)}</span></span></div>
+    <div class="stats">${ST.map((n,i)=>`<button class="${w.etch[n]?'up':''} ${statOpen.id===w.id&&statOpen.st===n?'on':''}" data-stat="${w.id}|${n}" aria-label="What does ${n} do?"><small>${ST_SHORT[n]}</small>${s[i]}</button>`).join('')}</div>
+    ${statOpen.id===w.id&&statOpen.st?`<div class="statinfo">${statInfo(statOpen.st,s[ST.indexOf(statOpen.st)],w)}</div>`:''}
+    <div class="row" style="justify-content:space-between"><div class="slots" title="Etch slots">${slotHtml}<span class="note" style="margin-left:6px">${w.res.length}/${slots} etched</span></div><span class="note">Power <b style="color:var(--fg)">${power(w)}</b></span></div>
+    <div class="note">Traits: ${traitSlots(w)||innate(w).length?[...innate(w).map(t=>`<b style="color:var(--gold)" title="From its core. ${esc(TRAITS[t])}">${esc(t)} (core)</b>`),...w.traits.map(t=>`<b style="color:var(--violet)" title="${esc(TRAITS[t])}">${esc(t)}</b>`),...Array.from({length:w.tfail||0},()=>'<span style="color:var(--bad)">burnt slot</span>'),...Array.from({length:Math.max(0,traitSlots(w)-tUsed(w))},()=>'empty slot')].join(' · '):'none (Superior or better gets a trait slot)'}</div>
+    ${w.state===1?`<div class="note" style="color:var(--bad)">Cracked. Can't fight or take scrolls until mended.</div>`:w.state===2?`<div class="note">Mended once (scarred, one slot lost). Another crack shatters it.</div>`:''}
+    <div class="row">
+      ${w.state===1?`<button class="b sm" data-mend="${w.id}" ${S.gold<mendCost()?'disabled':''}>Mend (${mendCost()} gold)</button>`:`${U('scribe')?`<button class="b sm" data-etch="${w.id}" ${canEtch(w)?'':'disabled'}>Etch</button>`:''}${squadSlots()?`<button class="b sm" data-eq="${w.id}">${inSq?'Unequip':'Equip'}</button>`:''}`}
+      ${oi>=0?`<button class="b sm primary" data-deliver="${w.id}">Deliver (${Math.round(sellPrice(w)*S.orders[oi].mult)}g)</button>`:''}
+      <button class="b sm" data-lock="${w.id}" aria-pressed="${!!w.locked}" title="Locked weapons can't be sold or delivered">${w.locked?'🔒 Locked':'Lock'}</button>
+      ${inSq?`<span class="note">Equipped, so it can't be sold or delivered</span>`:w.locked?'':`<button class="b sm" data-sell="${w.id}">Sell ${sellPrice(w)}g</button>`}
+    </div></article>`;
+}
+function scriptorium(){if(!U('scribe'))return '';const inv=Object.entries(S.scrolls).filter(([,n])=>n>0);
+  return `<section class="panel"><div class="row" style="justify-content:flex-end"><span class="note"><b>${S.frags||0}</b> scroll fragments${S.oil?` · <b>${S.oil}</b> Ward Oil`:''}</span></div>
+  <div class="row"><button class="b primary" data-gacha="1" ${(S.frags||0)<FRAG_COST?'disabled':''}>Trade ${FRAG_COST} fragments for a scroll</button></div>
+  ${inv.length?`<div class="scrolls" style="margin-top:8px">${inv.map(([k,n])=>{const[g,st]=k.split('|');return `<div class="scr" style="flex-wrap:wrap"><div data-scrinfo="${k}" style="cursor:pointer;flex:1" title="Tap for details"><b>${g} scroll${st?' of '+st:''}</b> ×${n} <span class="note">${scrInfo===k?'▴':'ⓘ'}</span></div><button class="b sm" data-breakdown="${k}">Break down (+${FRAG_BACK[g]||2})</button>${scrInfo===k?`<div style="flex-basis:100%">${scrollInfo(k)}</div>`:''}</div>`}).join('')}</div>`:''}</section>`}
+function armoryView(){
+  return `<section class="panel"><div class="row" style="justify-content:flex-end"><span class="note">${S.weapons.length} weapons${squadSlots()?' · equip up to 4 to fight':''}</span></div>
+  ${S.weapons.length?`<div class="weps">${S.weapons.map(wepCard).join('')}</div>`:`<div class="empty">Nothing forged yet. Head to the Forge and heat a blank.</div>`}
+  </section>`;
+}
+function squadHtml(){
+  const lab=['Hero 1 · front','Hero 2','Hero 3','Hero 4 · back'];
+  return `<div class="squad">${S.squad.map((id,i)=>{if(i>=squadSlots())return `<div class="sq" style="opacity:.55"><span class="lbl">${lab[i]}</span><span class="note">Locked. Hire ${UN.squire.ms[i][0]} Squires in the Workshop.</span></div>`;const w=id&&byId(id);return w?`<div class="sq full"><span class="lbl">${lab[i]}</span><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b><span class="note">Power ${power(w,i)}${i+1>REACH[w.arch]?` · can't reach, offense halved`:''}</span>${allTraits(w).length?`<span class="tr">${esc(allTraits(w).join(', '))}</span>`:''}<div class="row">${i>0?`<button class="b sm" data-mv="${i}" title="Move left">◀</button>`:''}<button class="b sm" data-pick="${i}">Change</button><button class="b sm" data-uneq="${w.id}">Remove</button></div></div>`:`<div class="sq"><span class="lbl">${lab[i]}</span><span class="note">Empty</span><div class="row"><button class="b sm primary" data-pick="${i}" ${S.weapons.length?'':'disabled'}>Choose weapon</button></div></div>`}).join('')}</div>`;
+}
+function pickModal(i){
+  const lab=['Hero 1 (front)','Hero 2','Hero 3','Hero 4 (back)'],cur=S.squad[i];
+  const list=[...S.weapons].sort((a,b)=>power(b)-power(a));
+  showModal(`<div class="row" style="justify-content:space-between"><h2>Choose for ${lab[i]}</h2><span class="note">Picking a weapon from another slot swaps them</span></div>
+  <div class="scrolls">${list.length?list.map(w=>{const at=S.squad.indexOf(w.id),reach=i+1>REACH[w.arch],cw=cur&&byId(cur),dl=(()=>{if(w.id===cur)return 0;const sq=[...S.squad];if(at>=0)sq[at]=sq[i];sq[i]=w.id;return squadPower(sq)-squadPower(S.squad)})();return `<div class="scr"><div><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b>${w.id===cur?'':` <b style="color:${dl>0?'var(--good)':dl<0?'var(--bad)':'var(--muted)'}" title="Change to party Power">${dl>0?'+'+dl:dl<0?'−'+(-dl):'±0'}</b>`}<div class="od"><span class="badge g${w.g}">${GR[w.g].n} ★${starsOf(w)}</span> Power ${power(w)}${allTraits(w).length?' · '+esc(allTraits(w).join(', ')):''}${at>=0?` · in slot ${at+1}`:''}${reach?` · can't reach from here`:''}${w.state===1?' · cracked':''}</div></div>${w.id===cur?`<button class="b sm" data-close="">Keep equipped</button>`:''}<button class="b sm primary" data-put="${i}|${w.id}" ${w.id===cur?'hidden':''}>${w.id===cur?'':at>=0?(cur?'Swap':'Move here'):'Equip'}</button></div>`}).join(''):'<p class="note">No weapons yet. Forge some first.</p>'}</div>
+  <div class="row"><button class="b" data-close="">Cancel</button></div>`);
+}
+// gold and ore for a stage scale with its material, and Wardens pay triple
+// Month pacing (Jonathan, 2026-11-16: "a player reaches the very end of the game in a month"). Expedition rewards follow what this stretch asks of you:
+// the blank and Hammer drill needed to match this material's Warden. About 100 clears (+20% per material) pay for a squad of four such blanks and that drill level.
+// Tuned with the pacing model (pace.cjs) for ~2 h of play a day plus the game left open overnight: the last Warden (stage 4000) falls around day 30.
+const paceSlams=k=>{const x=wardenStars(k);let n=3;while(maxStars(n)*.85<x)n++;return n};
+const paceClears=k=>100*(1+.2*k);
+// Richer veins: from Starmetal +4 on, each new material multiplies all automatic and tapped ore, so leaving the game open overnight pays for the next forge.
+const veinMult=()=>{const k=S.matTier||0;if(k<5)return 1;const f=j=>MATS[MATN[j]].ore*Math.pow(2,paceSlams(j)-3);return Math.max(1,f(k)/f(4)/10000)};
+function stageReward(st){const k=tierAt(st),m=MATS[MATN[k]].m,w=wardenAt(st)>=0?3:1,sk=paceSlams(k),C=paceClears(k);
+  return{g:Math.round(Math.max(40*m*m,150*Math.pow(3,sk-3)/C)*w),o:Math.round(Math.max(MATS[MATN[k]].ore*.4,4*MATS[MATN[k]].ore*Math.pow(2,sk-3)*.8/C)*w),ren:(2+k)*w}}
+function expLabel(){const k=wardenAt(S.stage);return k>=0?`Stage ${S.stage}: the ${MATN[k]} Warden`:`Expedition, stage ${S.stage}`}
+function gateNote(){const t=S.matTier||0;if(t>=MATN.length-1)return 'Every material is unlocked. Expeditions keep getting harder from here.';
+  const ws=wardenStage(t);return `<b>Next material: ${MATN[t+1]}.</b> Beat the ${MATN[t]} Warden at Expedition stage ${ws}${S.stage<ws?` (you're on stage ${S.stage})`:''}. This Warden carries ${GR[gradeOf(wardenStars(t))].n} ${MATN[t]} weapons (★${wardenStars(t)}): ${t===0?"you'll need a fully etched Superior party, Masterwork weapons, or a really smart trait line":`aim for about ★${wardenStars(t)} on ${MATN[t]}, which holds ${matCap(MATN[t])} slams`}.`}
+function fightView(){
+  const ready=S.squad.some(id=>id&&byId(id)&&byId(id).state!==1);
+  return `<div class="grid2">
+  <section class="panel"><p class="note" style="margin:0 0 8px;padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">${ready?gateNote():S.weapons.length?'Equip a weapon on one of your heroes below to set out on an Expedition.':'Your four heroes are ready to set out, but they have nothing to fight with. Hire a Blacksmith and a Swordsmith in the Workshop and forge them some weapons.'}</p><div class="row" style="justify-content:space-between"><h2>Your party</h2><span class="note">Party Power <b style="color:var(--fg)">${squadPower(S.squad)}</b></span></div>${squadHtml()}
+    <div class="row"><button class="b primary" id="exp" ${!ready||battle?.live||waitLeft()?'disabled':''}>${waitLeft()?`Regrouping ${waitLeft()}s`:expLabel()}</button><button class="b" id="ghost" ${!ready||battle?.live?'disabled':''}>Ladder: fight a rival's ghost</button></div>
+    ${S.stage>1&&U('quartermaster')?`<div class="row" style="margin-top:6px"><button class="b" id="rep" ${!ready||battle?.live||waitLeft()?'disabled':''}>${waitLeft()?`Regrouping ${waitLeft()}s · `:''}Replay stage ${S.stage-1}${wardenAt(S.stage-1)>=0?` (${MATN[wardenAt(S.stage-1)]} Warden)`:''}</button><span class="note">Half rewards</span></div>`:''}
+    ${battle?`<div class="row"><span class="note">Speed</span><div class="seg">${[1,2,4].map(x=>`<button data-spd="${x}" aria-pressed="${battle.spd===x}">${x}x</button>`).join('')}<button data-spd="0">Skip</button></div></div>`:''}
+  </section>
+  <section class="panel"><div class="row" style="justify-content:space-between"><h2>${battle?esc(battle.title):'Arena'}</h2>${battle?`<span class="note">Replay code ${battle.code}</span>`:''}</div>
+   <div id="arena">${battle?'':`<div class="empty">No fight yet.</div>`}</div>
+  </section></div>`;
+}
+let upgTab='mine';
+function upgView(){
+  const T=[['mine','Mine'],['forge','Forge'],['combat','Combat'],['etch','Etching'],['other','Other']];
+  const body={
+    mine:()=>mineUpgrades(),
+    forge:()=>upgRow('slams','Hammer drills',`Blanks up to ${maxStrikes()} slams now, +1 slam per level you buy. Bigger blanks cost more ore but can reach better grades`)+upgRow('shop','Shopfront',`Sale prices +${S.shop*15}% now, +15% per level`),
+    combat:()=>upgRow('drill','Drill yard',`Your squad has +${S.drill*5}% Might now, +5% per level`,10)
+      +upgRow('armor','Padded armor',`Your squad has +${S.armor*6}% Vigor now, +6% per level`,10)
+      +upgRow('banner','War banner',`Your squad starts each fight with attack meters ${S.banner*10}% full, +10% per level`,5)
+      +upgRow('bounty','Bounty board',`Expedition gold +${S.bounty*20}% now, +20% per level`),
+    etch:()=>upgRow('lamp','Scribe\'s lamp',`Keen, Daring and Trait scrolls +${S.lamp*3}% success now, +3% per level`,5)
+      +upgRow('hands','Steady hands',`Daring crack chance ${crackOf('Daring')}% now (from 25%), −3% per level`,5)
+      +upgRow('ink','Scroll hunters',`${S.ink*5}% chance of a lucky bonus scroll on every Expedition win now, +5% per level`,5)
+      +upgRow('mendkit','Mender\'s kit',`Mending costs ${mendCost()} gold now (from 100), −15% per level`,4),
+    other:()=>`<div class="order"><div><b>${S.dust} Temper Dust</b><div class="note">Shattered weapons leave dust. 3 dust makes one Ward Oil, which stops a Daring scroll from cracking a weapon.</div></div><button class="b sm" id="oil" ${S.dust<3?'disabled':''}>Make Ward Oil</button></div>
+`
+  };
+  if(upgTab!=='other'&&!body[upgTab]())upgTab=T.find(([k])=>body[k]())?.[0]||'other';
+  return `<section class="panel">
+  <div class="row" role="tablist" style="gap:6px;margin:4px 0 10px;justify-content:center">${T.filter(([k])=>k==='other'||body[k]()).map(([k,n])=>`<button class="b sm ${upgTab===k?'primary':''}" data-ut="${k}" role="tab" aria-selected="${upgTab===k}">${n}</button>`).join('')}</div>
+  ${body[upgTab]()}
+  </section>`;
+}
+let resetArm=false;
+
+/* ---------- forge minigame ---------- */
+function startForge(){
+  if(!archsOpen().length){toast('Nothing to forge yet. Look for a weapon specialist in the Workshop.');return}
+  if(!archsOpen().includes(pick.arch)){pick.arch=archsOpen()[0]}
+  const bc=blankCost(pick.mat); if(S.ore<bc){toast(`Need ${fmtN(bc)} ore. Dig in the Mine.`);return}
+  S.ore-=bc; let core=null;if(pick.core&&(S.cores[pick.core]||0)>0){core=pick.core;S.cores[core]--;if(!S.cores[core])pick.core=null}
+  F={arch:pick.arch,mat:pick.mat,core,size:blankSize(),res:[],pos:0,dir:1,speed:62,zl:0,last:0,done:false,ring:isMagic(pick.arch),s:3,rx:50,ry:50};
+  placeZone(); render(); loop.t=performance.now(); requestAnimationFrame(loop);
+}
+function placeZone(){const w=zoneW();F.zl=8+Math.random()*(84-w);if(F.ring){F.rx=14+Math.random()*72;F.ry=24+Math.random()*52;F.s=3}}
+// Magic weapons are bound in the Sanctum (Jonathan, 2026-11-17). The binding ring has its own milestones on the Arcanist: 5/20/40 widen it, 10/30/50 slow it 7% each.
+const isMagic=a=>a==='Staff'||a==='Grimoire';
+const stationOf=a=>isMagic(a)?'sanctum':'forge';
+const atStation=()=>tab==='forge'||tab==='sanctum';
+const ringW=()=>14+5*SMITH_GLOW.filter(n=>U('arcanist')>=n).length;
+const ringSlow=()=>1-0.07*SMITH_SLOW.filter(n=>U('arcanist')>=n).length;
+const ringTol=()=>ringW()/70; // Good if the ring's scale is within this of 1; Perfect within 40% of it (same shares as the bar)
+function loop(now){
+  if(!F||F.done)return;
+  const dt=Math.min(.05,(now-loop.t)/1000);loop.t=now;
+  if(F.ring){F.s-=F.speed*ringSlow()/62*1.25*dt;const a=$('#aring');if(a)a.style.transform=`scale(${Math.max(0,F.s)})`;
+    if(F.s<1-ringTol()*1.1){strike('M');if(!F||F.done)return}}
+  else{F.pos+=F.dir*F.speed*smithSlow()*dt; if(F.pos>100){F.pos=100;F.dir=-1} if(F.pos<0){F.pos=0;F.dir=1}
+  const m=$('#marker'); if(m)m.style.left=F.pos+'%';}
+  requestAnimationFrame(loop);
+}
+function drawTrack(){if(!F)return;if(F.ring){const r=$('#rune');if(r){r.style.left=F.rx+'%';r.style.top=F.ry+'%'}const a=$('#aring');if(a)a.style.transform=`scale(${F.s})`;return}const z=$('#zone');if(z){z.style.left=F.zl+'%';z.style.width=zoneW()+'%'}const m=$('#marker');if(m)m.style.left=F.pos+'%'}
+function strike(force){
+  if(!F||F.done)return;
+  const now=performance.now(),w=zoneW(),p=F.ring?F.rx:F.pos,off=Math.abs(F.s-1),tol=ringTol();
+  let r;
+  if(force==='M')r='M';
+  else if(F.last&&now-F.last<280)r='O';
+  else if(F.ring)r=off<=tol*.4?'P':off<=tol?'G':'M';
+  else if(p>=F.zl+w*.3&&p<=F.zl+w*.7)r='P';
+  else if(p>=F.zl&&p<=F.zl+w)r='G';
+  else r='M';
+  F.last=now;F.res.push(r);
+  let streak=0;for(let i=F.res.length-1;i>=0&&F.res[i]==='P';i--)streak++;
+  const msg={P:streak>4?`Perfect x${streak}! +${perfectStars(streak)} stars`:'Perfect!',G:'Good',M:F.ring?'The binding slips':'Miss',O:'Overheated!'}[r];
+  $('#callout').textContent=msg;$('#pips').innerHTML=pipsHtml();
+  if(r==='P'||r==='G'){sparks(p,r==='P'?14:7,F.ring?F.ry:50);const t=$('#track');t.classList.remove('forge-shake');void t.offsetWidth;t.classList.add('forge-shake')}
+  if(r==='M'||r==='O'){F.done=true;{const raw=scoreOf(F.res);$('#callout').textContent=msg+` −${missLoss(raw)} stars, and the blank is done.`}setTimeout(finishForge,450);return}
+  if(F.res.length>=F.size){F.done=true;setTimeout(finishForge,r==='P'?320:200);return}
+  F.speed+=11;placeZone();drawTrack();
+}
+function sparks(p,n,y=50){const s=$('#sparks');if(!s)return;for(let i=0;i<n;i++){const e=document.createElement('span');e.className='spark';e.style.left=p+'%';e.style.top=y+'%';e.style.setProperty('--dx',(Math.random()*120-60)+'px');e.style.setProperty('--dy',(Math.random()*-60-10)+'px');s.appendChild(e);setTimeout(()=>e.remove(),520)}}
+function finishForge(){
+  const raw=scoreOf(F.res),missed=F.res.some(r=>r==='M'||r==='O'),lost=missed?missLoss(raw):0,score=Math.max(0,raw-lost),size=F.size; // a miss costs a third of your stars (at least 3)
+  const g=gradeOf(score);
+  if(score<=0){const ring=F.ring;F=null;save();showModal(`<div class="roll"><div class="glyph crack">${score}</div><div class="result">The ${ring?'binding unravels':'blank cracks apart'}</div>
+   <p class="note" style="text-align:center;margin:0">${raw} stars, minus ${lost} for the miss. Nothing was left to work with, so the ore is lost.</p>
+   <div class="row" style="justify-content:center"><button class="b primary" data-close="${stationOf(F?F.arch:pick.arch)}">Try again</button></div></div>`);render();return}
+  const w={id:S.nid++,arch:F.arch,mat:F.mat,g,etch:{},res:[],traits:[],state:0,core:F.core||null,stars:score,spec:U(specOf(F.arch))};
+  S.weapons.unshift(w);if(g>=1){const t=tally();t.made[w.arch]=(t.made[w.arch]||0)+1;t.total++}F=null;save(); // only Fine or better counts toward Workshop unlocks
+  showModal(`<div class="roll"><div class="glyph ok">${score}</div><div class="result"><span class="g${g}">${GR[g].n}</span> ${wName(w)} <span style="color:var(--gold)">★${score}</span></div>
+   <p class="note" style="text-align:center;margin:0">${score} of ${maxStars(size)} stars${missed?` (−${lost} for the miss)`:''} · stats x${fmtX(starMult(score))}${GR[g+1]?` · ${GR[g+1].n} at ${GR[g+1].at}`:''} · Power ${power(w)} · ${GR[g].s} etch slots · ${traitSlots(w)} trait slot${traitSlots(w)===1?'':'s'}</p>
+   <div class="row" style="justify-content:center">${orderFor(w)>=0?`<button class="b primary" data-deliver="${w.id}">Deliver to order (${Math.round(sellPrice(w)*S.orders[orderFor(w)].mult)}g, +${S.orders[orderFor(w)].ren} renown)</button>`:''}<button class="b" data-sell="${w.id}">Sell now (${sellPrice(w)}g)</button><button class="b" data-close="${stationOf(w.arch)}">Keep it</button></div></div>`);
+  if(g>S.best){S.best=g;}
+  render();
+}
+
+function scoreOf(res){let t=0,st=0;for(const r of res){if(r==='P'){st++;t+=perfectStars(st)}else{st=0;if(r==='G')t+=1}}return t}
+const fmtX=x=>x<100?x.toFixed(2):fmtN(x);
+const missLoss=raw=>Math.max(3,Math.ceil(raw/3));
+/* ---------- etching ---------- */
+function etchModal(id){
+  etchId=id;const w=byId(id);if(!w)return;
+  const inv=Object.entries(S.scrolls).filter(([,n])=>n>0);
+  const odds=(k,st)=>{const s=SC[k];return k==='Sovereign'?`${pOf(k)}% · +${Math.round(s.pct*100)}% of the weapon's ${st} (Crit +10)`:k==='Wild'?`Every stat rolls ${Math.round(-2*MATS[w.mat].m)} to +${Math.round(4*MATS[w.mat].m)}`:k==='Trait'?`${pOf(k)}% · adds ${st}: ${TRAITS[st]} · a fail burns the trait slot`:`${pOf(k)}% · +${Math.round(s.gain*MATS[w.mat].m)} (Crit +${Math.round(s.gain*MATS[w.mat].m)*CRITX}, Vigor +${Math.round(s.gain*MATS[w.mat].m)*VIG})${s.crack?` · fail: ${crackOf(k)}% crack`:''}`};
+  const usable=(g,st)=>g==='Trait'?tUsed(w)<traitSlots(w):w.res.length<maxSlots(w);
+  showModal(`<div class="row" style="justify-content:space-between"><h2>Etch ${wName(w)}</h2><span class="note">${w.res.length}/${maxSlots(w)} etch slots · ${tUsed(w)}/${traitSlots(w)} trait slots</span></div>
+  <h3>Your scrolls</h3>
+  <div class="scrolls">${inv.length?inv.map(([k,n])=>{const[g,st]=k.split('|');return `<div class="scr" style="flex-wrap:wrap"><div data-scrinfo="${k}" style="cursor:pointer;flex:1" title="Tap for details"><b>${g} scroll${st?' of '+st:''}</b> ×${n} <span class="note">${scrInfo===k?'▴':'ⓘ'}</span><div class="od">${odds(g,st)}</div></div><button class="b sm primary" data-use="${k}" ${usable(g,st)?'':'disabled'}>Read it</button>${scrInfo===k?`<div style="flex-basis:100%">${scrollInfo(k,w)}</div>`:''}</div>`}).join(''):'<div class="empty">No scrolls yet. Win them on Expeditions or trade fragments in the Library.</div>'}</div>
+  ${S.oil?`<label class="ck"><input type="checkbox" id="useoil"> Coat in Ward Oil before a Daring scroll (${S.oil} left)</label>`:''}
+  <h3>Traits</h3>
+  <p class="note" style="margin:0 0 6px">Copies of a trait stack: 2 work at 160%, 3 at 200%.</p>
+  <p class="note" style="margin:0">${Object.entries(TRAITS).map(([t,d])=>`<b>${t}</b>: ${d}`).join(' · ')}</p>
+
+  <div class="row"><button class="b" data-close="">Done</button></div>`);
+}
+function useScroll(k){
+  const w=byId(etchId);if(!w||w.state===1||!S.scrolls[k])return;
+  const[g,st]=k.split('|'),s=SC[g];
+  if(g==='Trait'?tUsed(w)>=traitSlots(w):w.res.length>=maxSlots(w))return;const oilBox=$('#useoil');const oiled=g==='Daring'&&oilBox&&oilBox.checked&&S.oil>0;
+  S.scrolls[k]--;if(oiled)S.oil--;tally().etched++;
+  const r1=roll(),r2=roll();
+  let out={kind:'ok',text:''};
+  if(g==='Trait'){
+    if(r1*100<pOf(g)){w.traits.push(st);out={kind:'ok',text:`Success! ${wName(w)} gains ${st}`}}else{w.tfail=(w.tfail||0)+1;out={kind:'no',text:"Failed. The trait didn't take, and the slot is spent."}}
+  }else if(g==='Wild'){
+    const parts=[];ST.forEach(n=>{const d=Math.round((Math.floor(roll()*7)-2)*MATS[w.mat].m),v=gainOf(n,d);w.etch[n]=(w.etch[n]||0)+v;parts.push(`${n} ${v>=0?'+':''}${v}`)});
+    w.res.push('ok');out={kind:'ok',text:'Wild magic: '+parts.join(', ')};
+  }else if(r1*100<pOf(g)){
+    const gm=Math.round(s.gain*MATS[w.mat].m),base=stats({...w,etch:{}})[ST.indexOf(st)],v=s.pct?(st==='Crit'?10:Math.max(1,Math.round(base*s.pct))):gainOf(st,gm);w.etch[st]=(w.etch[st]||0)+v;w.res.push('ok');out={kind:'ok',text:`Success! ${st} +${v}`};
+  }else{
+    w.res.push('no');
+    if(s.crack&&r2*100<crackOf(g)&&!oiled){
+      if(w.state===2){S.weapons=S.weapons.filter(x=>x!==w);S.squad=S.squad.map(i=>i===w.id?null:i);S.dust+=2;out={kind:'crack',text:`Shattered! The ${wName(w)} is gone. You sweep up 2 Temper Dust.`}}
+      else{w.state=1;S.squad=S.squad.map(i=>i===w.id?null:i);out={kind:'crack',text:'Failed, and the blade CRACKED.'}}
+    }else out={kind:'no',text:s.crack&&oiled&&r2*100<crackOf(g)?'Failed, but the Ward Oil held. No crack.':'Failed. The slot is spent.'};
+  }
+  if(S.scrolls[k]<=0)delete S.scrolls[k];
+  save();
+  const slow=g==='Daring'?2300:1400;
+  showModal(`<div class="roll"><div class="glyph spin" id="gl">${g[0]}</div><div class="result" id="rt">${g} scroll${st?' of '+st:''}…</div><p class="note" id="od">${g==='Wild'?'':pOf(g)+'% to succeed'}</p></div>`);
+  setTimeout(()=>{
+    const gl=$('#gl');if(!gl)return;gl.className='glyph '+out.kind;gl.textContent=out.kind==='ok'?'✓':out.kind==='crack'?'✕':'–';
+    $('#rt').textContent=out.text;$('#od').innerHTML=`<div class="row" style="justify-content:center;margin-top:6px">${byId(etchId)&&canEtch(byId(etchId))?`<button class="b primary" data-again="1">Keep etching</button>`:''}<button class="b" data-close="armory">Back to Armory</button></div>`;
+    render();
+  },slow);
+}
+
+/* ---------- battle ---------- */
+const MELEE={Sword:1,Axe:1,Shield:1,Warhammer:1};
+const REACH={Sword:1,Axe:1,Spear:2,Bow:4,Staff:4,Shield:1,Warhammer:1,Grimoire:4}; // swings only from slot <= reach
+function unitFrom(w,side,i,label){let[m,mg,cr,h,df,md,v]=stats(w);if(side===0){const b=1+0.05*S.drill+0.0025*U('squire');m=Math.round(m*b);mg=Math.round(mg*b);v=Math.round(v*(1+0.06*S.armor))}return{id:side+':'+i,name:label||wName(w)+(ups(w)?' +'+ups(w):''),arch:w.arch,mag:atkStat(w.arch)==='Magic',traits:allTraits(w),might:m,magic:mg,crit:cr,haste:h,def:df,mdef:md,hp:v,max:v,side,t:side===0?10*S.banner:0,swings:0,bleed:null}}
+// Late Wardens climb the grade ladder (Jonathan, 2026-11-16): up to Moonsilver they stay Masterwork (11 stars, as tuned); from the
+// Starmetal Warden on, each one is forged one grade higher (Heroic, Mythic, Legendary ... Infinite), then +150 stars per Warden past that.
+// Their etches grow with their stars, so the Warden stays as hard relative to its own base stats.
+// Each Warden asks for about 80% of a perfect blank at its material's slam cap (Copper's stays Masterwork, 11 stars). Starmetal's Warden is about Infinite.
+const wardenStars=k=>k===0?11:Math.round(.8*maxStars(matCap(MATN[k])));
+function enemySquad(stage){
+  const r=rng(stage*7919+11),k=tierAt(stage),mat=MATN[k],m=MATS[mat].m;
+  const start=k?wardenStage(k-1)+1:1,end=k<=LAST_WARDEN?wardenStage(k):start+40; // this tier's stretch of stages
+  const warden=wardenAt(stage)>=0,f=Math.min(1,(stage-start)/Math.max(1,end-1-start)); // 0 at the start of the stretch, 1 just before the Warden
+  const beyond=Math.max(0,stage-wardenStage(LAST_WARDEN)); // endless Starmetal stages after the last Warden
+  // [units, grade, etch successes]. Wardens were tuned with a combat harness: they need a fully etched Superior squad, Masterwork weapons, or a smart trait line.
+  // Regular stages ramp from easy at the start of a material up to a Superior 4/6 squad just before its Warden.
+  const [n,g,eb]=warden?[4,3,5]:beyond?[4,Math.min(4,2+Math.floor(beyond/15)),Math.min(9,3+Math.floor(beyond/6))]
+    :k===0?[Math.min(4,1+Math.floor(f*4)),f<.55?0:f<.85?1:2,Math.floor(f*f*3.9)]:[f<.5?3:4,1+Math.round(f),1+Math.round(f*3)];
+  const names=['Bandit','Ghoul','Raider','Wolf-rider','Cultist','Brute'];
+  const plan=warden?[['Axe'],['Sword'],['Bow'],['Staff']]:[['Sword','Axe'],['Spear','Axe','Sword'],['Bow','Spear'],['Staff','Bow']];
+  const units=plan.slice(0,n).map((opts,i)=>{const arch=opts[Math.floor(r()*opts.length)],etch={};
+    const ws=warden?wardenStars(wardenAt(stage)):null,em=ws?starMult(ws)/starMult(11):1;
+    for(let j=0;j<eb;j++){const st=j%2?'Vigor':atkStat(arch);etch[st]=(etch[st]||0)+Math.round((st==='Vigor'?3*VIG:3)*m*em)}
+    const w={arch,mat,g:ws?gradeOf(ws):g,etch,res:[],traits:[],...(ws?{stars:ws}:{})};
+    return unitFrom(w,1,i,warden?`${mat} Warden (${arch})`:`${names[Math.floor(r()*names.length)]} (${arch})`)});
+  if(warden||k===0)return units;
+  // Difficulty never drops after a Warden (Jonathan, 2026-11-16): the 3 stages after a Warden sit just under it, then every stage is
+  // harder than the Warden you beat and climbs toward the next one. Past the last Warden it keeps climbing 2% a stage.
+  const Wa=foeStr(enemySquad(wardenStage(k-1))),last=k>LAST_WARDEN,Wb=last?0:foeStr(enemySquad(wardenStage(k)));
+  const into=stage-start+1,target=into<=3?Wa*.93:last?Wa*1.06*Math.pow(1.02,into-4):Wa*1.06*Math.pow((Wb*.94)/(Wa*1.06),(stage-(start+3))/Math.max(1,end-1-(start+3)));
+  const fixed=units.reduce((a,u)=>a+u.crit+u.haste*2,0),scal=units.reduce((a,u)=>a+(u.might+u.magic)*2+u.def+u.mdef*.6+u.hp/4,0),x=Math.max(.3,(target-fixed)/Math.max(1,scal));
+  units.forEach(u=>{u.might=Math.round(u.might*x);u.magic=Math.round(u.magic*x);u.def=Math.round(u.def*x);u.mdef=Math.round(u.mdef*x);u.hp=u.max=Math.round(u.hp*x)});
+  return units;
+}
+const foeStr=E=>E.reduce((a,u)=>a+(u.might+u.magic)*2+u.crit+u.haste*2+u.def+u.mdef*.6+u.hp/4,0);
+function ghostSquad(){
+  const mine=S.squad.map(byId).filter(w=>w&&w.state!==1);const target=mine.reduce((a,w)=>a+power(w),0)*(0.85+Math.random()*0.3)/Math.max(1,mine.length);
+  const best=matsOpen().slice(-1)[0],tpool=Object.keys(TRAITS).filter(t=>t!=='Scavenger');
+  const plan=[['Sword','Axe'],['Spear','Sword','Axe'],['Bow','Spear','Staff'],['Bow','Staff']];
+  return plan.slice(0,Math.max(2,mine.length)).map((opts,i)=>{
+    const arch=opts[Math.floor(Math.random()*opts.length)];
+    const w={arch,mat:best,g:Math.floor(Math.random()*3)+1,etch:{},res:[],traits:Math.random()<.4?[tpool[Math.floor(Math.random()*tpool.length)]]:[]};
+    let guard=0;while(power(w)<target&&guard++<80){const pool=[atkStat(arch),'Crit','Haste','Defense','Magic Defense'],st=pool[Math.floor(Math.random()*5)];w.etch[st]=(w.etch[st]||0)+gainOf(st,1);w.res.push('ok')}
+    return unitFrom(w,1,i,`${w.mat} ${arch}${ups(w)?' +'+ups(w):''}`);
+  });
+}
+function sim(A,B,seed,rec){
+  const r=rng(seed),units=[...A,...B],ev=[];let tick=0;
+  const line=s=>units.filter(u=>u.side===s&&u.hp>0);
+  const slot=u=>line(u.side).indexOf(u);
+  const has=(u,t)=>STACK[Math.min(3,u.traits.filter(x=>x===t).length)]; // copies stack with falloff: 100/160/200%
+  const tr=(u,k)=>(u.tt&&u.tt[k])||0;
+  const mightOf=a=>(a.mag?a.magic:a.might)*(a.hp<a.max/2?1+.08*tr(a,'Berserker'):1); // the weapon's attack: Might, or Magic for magic weapons
+  const defOf=(d,mag)=>(mag?d.mdef:d.def)*(slot(d)===0?1+.1*tr(d,'Vanguard'):1); // physical hits meet Defense, magic hits meet Magic Defense
+  const cut=(n,d,mag)=>n*n/(n+.52*defOf(d,mag)); // scale-free: Defense is measured against the hit, so it works the same at 10 or 10^20 (matches the old 100/(100+4x) at early sizes)
+  const dmgOf=(a,d,mult)=>Math.max(1,Math.floor(cut(mightOf(a),d,a.mag)*mult*(.85+r()*.3))); // hits roll 85-115% (replaced crits as the swing)
+  const push=o=>{o.tick=tick;ev.push(o)};const meters=[];
+  function fell(d){push({k:'down',d:d.id});for(const u of line(d.side)){const n=has(u,'Avenger');if(n){const am=Math.round(4*n),ah=Math.round(2*n);u[u.mag?'magic':'might']+=am;u.haste+=ah;push({k:'buff',d:u.id,txt:`Avenger, +${am} ${u.mag?'Magic':'Might'} and +${ah} Haste`})}}}
+  function hurt(src,d,dmg,info){
+    if(d.hp<=0)return;
+    const cov=line(d.side)[0];
+    if(src&&!info.thorns&&!info.cover&&cov&&cov!==d&&cov.arch==='Shield'){const part=Math.floor(dmg*.3);if(part>0){dmg-=part;hurt(src,cov,Math.max(1,Math.floor(cut(part,cov,src.mag))),{cover:d.id})}}
+    if(d.hp<=0)return;
+    d.hp=Math.max(0,d.hp-dmg);push({k:'hit',a:src?src.id:null,d:d.id,dmg,hp:d.hp,...info});
+    if(src&&src.hp>0&&has(d,'Thorns')&&!info.thorns)hurt(d,src,Math.max(1,Math.floor(dmg*has(d,'Thorns')/4)),{thorns:true});
+    if(d.hp<=0)fell(d);
+  }
+  function heal(src,d,n){if(d.hp<=0)return;n=Math.round(n*(1+.12*tr(d,'Medic')));const h=Math.min(n,d.max-d.hp);if(h<=0)return;d.hp+=h;push({k:'heal',a:src.id,d:d.id,amt:h,hp:d.hp})}
+  function swing(a,boost=1){
+    const foes=line(1-a.side);if(!foes.length)return;
+    if(a.arch==='Staff'){const hurtAllies=line(a.side).filter(u=>u.hp<u.max);if(hurtAllies.length){const t=hurtAllies.reduce((m,u)=>u.hp/u.max<m.hp/m.max?u:m);heal(a,t,Math.max(2,Math.floor(mightOf(a)*1.2)));return}}
+    const d=a.arch==='Bow'?foes[foes.length-1]:foes[0];
+    a.swings++;
+    const crit=r()*100<Math.min(CRIT_CAP,a.crit+(slot(a)>0?4*tr(a,'Marksman'):0)),fury=has(a,'Fury')&&a.swings%3===0;
+    let mult=boost;if(crit)mult*=1.75;if(fury)mult*=1+has(a,'Fury');if(a.arch==='Staff')mult*=.6;
+    const spell=a.arch==='Grimoire',dmg=dmgOf(a,d,mult);
+    if(spell&&a.swings%3===0){push({k:'buff',d:a.id,txt:'unleashes a spell across the whole line'});for(const o of foes)hurt(a,o,dmgOf(a,o,mult*.4),{spell:true})}
+    else hurt(a,d,dmg,{crit,fury,spell});
+    if(a.arch==='Warhammer'&&d.hp>0&&d.t>0){d.t=Math.max(0,d.t-40);push({k:'buff',d:d.id,txt:'is staggered, attack timer knocked back'})}
+    if(a.hp>0&&has(a,'Lifesteal'))heal(a,a,Math.max(1,Math.floor(dmg*has(a,'Lifesteal')/4)));
+    if(d.hp>0&&has(a,'Bleed')&&r()<.3){d.bleed={n:Math.max(1,Math.round(Math.floor(mightOf(a)/5)*has(a,'Bleed'))),left:3};push({k:'buff',d:d.id,txt:'starts bleeding'})}
+    if(a.arch==='Axe'&&a.hp>0){const o=line(1-a.side).filter(u=>u!==d)[0];if(o)hurt(a,o,Math.max(1,Math.floor(dmg/2)),{cleave:true})}
+    if(d.arch==='Sword'&&d.hp>0&&a.hp>0&&slot(d)===0&&MELEE[a.arch]&&r()<.15)hurt(d,a,dmgOf(d,a,.5),{riposte:true});
+  }
+  for(const u of units){if(!u.tt)continue; // title drawbacks
+    u.haste=Math.round(u.haste*(1-.02*tr(u,'Vanguard')));u.def=Math.round(u.def*(1-.04*tr(u,'Marksman')));u.mdef=Math.round(u.mdef*(1-.04*tr(u,'Marksman')));
+    const vg=1-.02*tr(u,'Berserker');u.max=Math.round(u.max*vg);u.hp=Math.min(u.hp,u.max);
+    const dm=1-.02*tr(u,'Medic')-.03*tr(u,'Drillmaster');u.might=Math.round(u.might*dm);u.magic=Math.round(u.magic*dm)}
+  for(const u of units){const dm=tr(u,'Drillmaster');if(dm){const ally=line(u.side)[slot(u)+1];if(ally){const pct=5*dm;ally.haste=Math.round(ally.haste*(1+pct/100));push({k:'buff',d:ally.id,txt:`drilled by ${u.name}, +${pct}% Haste`})}}}
+  for(const u of units){const rn=has(u,'Rally');if(rn){const ally=line(u.side)[slot(u)+1];if(ally){const rm=Math.round(3*rn);ally[ally.mag?'magic':'might']+=rm;push({k:'buff',d:ally.id,txt:`rallied by ${u.name}, +${rm} ${ally.mag?'Magic':'Might'}`})}}}
+  for(const u of units){const fs=has(u,'First Strike');if(fs&&u.hp>0){push({k:'buff',d:u.id,txt:fs>1?`First Strike! (${Math.round(fs*100)}% power)`:'First Strike!'});swing(u,fs)}}
+  while(tick<900&&line(0).length&&line(1).length){
+    tick++;
+    if(tick%10===0)for(const u of units){if(u.hp>0&&u.bleed&&u.bleed.left>0){u.bleed.left--;hurt(null,u,u.bleed.n,{bleed:true})}}
+    for(const a of units){
+      if(a.hp<=0)continue;
+      if(slot(a)+1>REACH[a.arch]){a.t=Math.min(100,a.t+a.haste);continue} // out of reach: meter stays charged
+      a.t+=a.haste;if(a.t<100)continue;a.t-=100;
+      swing(a);
+      if(!line(0).length||!line(1).length)break;
+    }
+    if(rec)meters[tick]=units.map(u=>u.hp>0?Math.min(100,u.t):0);
+  }
+  return{ev,win:line(0).length>0&&line(1).length===0,meters:rec?meters:null,mids:rec?units.map(u=>u.id):null};
+}
+const waitLeft=()=>Math.max(0,Math.ceil(((S.expWait||0)-Date.now())/1000));
+function startBattle(kind){
+  if((kind==='exp'||kind==='rep')&&waitLeft())return;
+  const mine=S.squad.slice(0,squadSlots()).map((id,h)=>({w:byId(id),h})).filter(x=>x.w&&x.w.state!==1).map((x,i)=>{const u=unitFrom(x.w,0,i);u.tt={...S.titles[x.h]};return u});
+  if(!mine.length)return;
+  const foes=kind==='exp'?enemySquad(S.stage):kind==='rep'?enemySquad(S.stage-1):ghostSquad();
+  const seed=(S.seed++)*2654435761>>>0;
+  const clone=a=>a.map(u=>({...u,traits:[...u.traits]}));
+  const res=sim(clone(mine),clone(foes),seed,true);
+  battle={kind,title:kind==='exp'?expLabel():kind==='rep'?`Replay, stage ${S.stage-1}`:`Ghost of Smith ${String(seed%9000+1000)}`,A:clone(mine),B:clone(foes),res,i:0,tick:0,spd:battle?.spd||2,live:true,code:`${kind==='exp'?'E':kind==='rep'?'R':'G'}${kind==='rep'?S.stage-1:S.stage}-${seed.toString(36).toUpperCase()}`,log:[]};
+  render();step();
+}
+function drawMeters(){const b=battle;if(!b||!b.res.meters)return;const m=b.res.meters[b.tick];if(!m)return;b.res.mids.forEach((id,i)=>{const el=unitEl(id),bar=el&&el.querySelector('.atk i');if(bar){bar.style.width=Math.round(m[i])+'%';el.querySelector('.atk').classList.toggle('full',m[i]>=100)}})}
+function unitEl(id){return document.querySelector(`[data-u="${id}"]`)}
+function lineCards(arr){
+  const alive=arr.filter(u=>u.hp>0),dead=arr.filter(u=>u.hp<=0);
+  return [...alive,...dead].map(u=>{const i=alive.indexOf(u),wait=i>=0&&i+1>REACH[u.arch];
+    return `<div class="unit ${u.hp<=0?'dead':''}" data-u="${u.id}"><div class="un">${esc(u.name)}</div><div class="note">${i<0?'Down':i===0?'Front':'Slot '+(i+1)}${wait?' · waiting':''} · <span class="hpn">${u.hp}/${u.max}</span></div>${u.traits.length?`<div class="tr">${esc(u.traits.join(', '))}</div>`:''}<div class="hp"><i style="width:${Math.round(u.hp/u.max*100)}%"></i></div><div class="atk" title="Attack meter: swings when full"><i></i></div></div>`}).join('');
+}
+function drawArena(){
+  const b=battle,el=$('#arena');if(!el)return;
+  el.innerHTML=`<div class="lines"><h3>Enemy line · front on the left</h3><div class="line foe">${lineCards(b.B)}</div><h3>Your line · front on the left</h3><div class="line">${lineCards(b.A)}</div></div>
+  <div class="log" id="log" style="margin-top:10px">${b.log.slice(-40).map(l=>`<div class="${l.c||''}">${esc(l.t)}</div>`).reverse().join('')}</div>`;
+}
+function step(){
+  const b=battle;if(!b||!b.live)return;
+  if(b.spd===0){while(b.i<b.res.ev.length)applyEv(b.res.ev[b.i++],true);return endBattle()}
+  b.tick++;
+  while(b.i<b.res.ev.length&&b.res.ev[b.i].tick<=b.tick)applyEv(b.res.ev[b.i++],false);
+  drawMeters();
+  if(b.i>=b.res.ev.length){return setTimeout(endBattle,300)}
+  setTimeout(step,240/b.spd); // combat plays at a quarter of its original speed at every setting (Jonathan, 2026-11-17: halved twice)
+}
+function applyEv(e,quiet){
+  const b=battle,all=[...b.A,...b.B],U=id=>all.find(u=>u.id===id);
+  const d=U(e.d),a=e.a?U(e.a):null;let txt='';
+  if(e.k==='hit'){d.hp=e.hp;txt=e.bleed?`${d.name} bleeds for ${e.dmg}`:e.cover?`${d.name} shields ${U(e.cover).name}, taking ${e.dmg}`:`${a.name} ${e.riposte?'ripostes':e.cleave?'cleaves':e.thorns?'reflects thorns at':e.spell?'blasts':'hits'} ${d.name} for ${e.dmg}${e.crit?' (crit)':''}${e.fury?' (Fury)':''}`}
+  else if(e.k==='heal'){d.hp=e.hp;txt=a===d?`${d.name} drains ${e.amt} health`:`${a.name} mends ${d.name} for ${e.amt}`}
+  else if(e.k==='down'){d.hp=0;txt=`${d.name} is down. The line steps forward.`}
+  else txt=`${d.name} ${e.txt}`;
+  b.log.push({t:txt});
+  if(quiet)return;
+  if(e.k==='down'){drawArena();return}
+  const el=unitEl(e.d);
+  if(el){
+    el.querySelector('.hp i').style.width=Math.round(d.hp/d.max*100)+'%';
+    el.querySelector('.hpn').textContent=`${d.hp}/${d.max}`;
+    if(e.k==='hit'){el.classList.remove('hit');void el.offsetWidth;el.classList.add('hit')}
+    if(e.k==='hit'||e.k==='heal'){const f=document.createElement('span');f.className='fl'+(e.crit||e.fury?' c':'')+(e.k==='heal'?' h':'');f.textContent=(e.k==='heal'?'+'+e.amt:'-'+e.dmg);el.appendChild(f);setTimeout(()=>f.remove(),700)}
+  }
+  const lg=$('#log');if(lg){const row=document.createElement('div');row.textContent=txt;lg.prepend(row);while(lg.children.length>40)lg.lastChild.remove()}
+}
+function endBattle(){
+  const b=battle;if(!b||!b.live)return;b.live=false;
+  let msg;
+  if(b.kind==='rep'){
+    if(b.res.win){
+      const st=S.stage-1,rw=stageReward(st),g=Math.round(rw.g/2*(1+0.2*S.bounty)*qmMult()),o=Math.round(rw.o/2*qmMult());S.gold+=g;S.ore+=o;
+      const lb=lootBonus(),fr=dropFrags(st,.5);let drop=null;if(Math.random()<fullScrollChance(st)/2+lb)drop=dropScroll();
+      let oil='';if(Math.random()<.1+lb+assayBonus()){S.oil++;oil=', 1 Ward Oil'}
+      oil+=dropCore(.35+lb);
+      msg=`Stage ${st} cleared again. +${g} gold, +${o} ore, ${fr} scroll fragments${drop?', and '+scrollName(drop)+'!':''}${bonusScroll()}${oil}.`;
+      b.log.push({t:msg,c:'w'});
+    }else{S.expWait=Date.now()+60000;msg='Defeat. Your party regroups for a minute.';b.log.push({t:msg,c:'l'})}
+  }else if(b.kind==='exp'){
+    if(b.res.win){
+      const st=S.stage,rw=stageReward(st),g=Math.round(rw.g*(1+0.2*S.bounty)*qmMult()),o=Math.round(rw.o*qmMult());S.gold+=g;S.ore+=o;S.renown+=rw.ren;
+      const fr=dropFrags(st,wardenAt(st)>=0?3:1),drop=Math.random()<fullScrollChance(st)?dropScroll():null;
+      const lb=lootBonus();let oil='';if(Math.random()<.2+lb+assayBonus()){S.oil++;oil=', 1 Ward Oil'}
+      oil+=dropCore(wardenAt(st)>=0?1:.25+lb);
+      const wk=wardenAt(st);let unlock='';if(wk>=0&&(S.matTier||0)<=wk){S.matTier=wk+1;unlock=` ${MATN[wk+1]} unlocked at the forge!`}
+      S.stage++;msg=`Victory! +${g} gold, +${o} ore, ${fr} scroll fragments${drop?', and '+scrollName(drop)+'!':''}${bonusScroll()}${oil}.${unlock}`;
+      b.log.push({t:msg,c:'w'});if(unlock)toast(unlock.trim());
+    }else{S.expWait=Date.now()+60000;msg='Defeat. Your party regroups for a minute. Forge better or rethink your line.';b.log.push({t:msg,c:'l'})}
+  }else{
+    const d=b.res.win?18:-14;S.rating+=d;if(b.res.win)S.gold+=20;
+    msg=b.res.win?`Ghost defeated. Rating +18, +20 gold`:`Your line fell. Rating −14`;
+    b.log.push({t:msg,c:b.res.win?'w':'l'});
+  }
+  save();render();toast(msg);
+}
+
+// Scrolls only drop (Jonathan, 2026-11-16). Every first clear drops one, replays 60%; Ink supplier adds a chance of a lucky second scroll.
+function dropScroll(gacha){const stat=ST[Math.floor(Math.random()*ST.length)],tk=Object.keys(TRAITS),tr=tk[Math.floor(Math.random()*tk.length)];
+  let pool=[['Steady',30],['Keen',25],['Daring',20],['Trait',13],['Wild',12]];if(sovOpen())pool.push(['Sovereign',4]);
+  if(gacha)pool=pool.filter(([g])=>g==='Wild'||U('scribe')>=SCROLL_SCRIBES[g]); // the Scribe only writes what your Scribes can read
+  let r=Math.random()*pool.reduce((a,x)=>a+x[1],0),g=pool[0][0];for(const[n,wt]of pool){if(r<wt){g=n;break}r-=wt}
+  const k=g==='Wild'?'Wild|':g==='Trait'?'Trait|'+tr:g+'|'+stat;S.scrolls[k]=(S.scrolls[k]||0)+1;return k}
+// Scroll fragments (Jonathan, 2026-11-16): every Expedition win drops fragments; 10 buy a random scroll from the Scribe, and unwanted scrolls break back down.
+const FRAG_COST=10,FRAG_BACK={Steady:2,Keen:4,Daring:6,Trait:7,Wild:3,Sovereign:9};
+const fullScrollChance=st=>Math.min(.75,.15+st*.004); // full scrolls still drop, more often the deeper you go
+function dropFrags(st,mult){const n=Math.round((4+Math.floor(Math.random()*3)+Math.floor(st/20))*mult);S.frags=(S.frags||0)+n;return n}
+// Tap a scroll for its details (Jonathan, 2026-11-17)
+let scrInfo=null;
+function scrollInfo(k,w){const[g,st]=k.split('|'),s=SC[g],m=w?MATS[w.mat].m:1,mat=w?w.mat:'Copper',gain=s.gain?Math.round(s.gain*m):0,need=SCROLL_SCRIBES[g],L=[];
+  if(g==='Wild')L.push(`Always works. Every stat on the weapon rolls between ${Math.round(-2*m)} and +${Math.round(4*m)}${w?'':' on Copper (more on better materials)'}, so it can lower stats as well as raise them.`);
+  else if(g==='Trait')L.push(`${pOf(g)}% chance to add the ${st} trait: ${TRAITS[st]}`,`Uses a trait slot (Superior and up). A failure burns that trait slot for good.`);
+  else if(g==='Sovereign')L.push(`${pOf(g)}% chance to add +${Math.round(s.pct*100)}% of the weapon's ${st} (Crit gets a flat +10). It grows with the weapon, so it shines on huge late-game blades.`);
+  else L.push(`${pOf(g)}% chance to add +${gain} ${st}${w?'':' on Copper'} (Crit gets ${CRITX}x, Vigor ${VIG}x). Gains scale with the weapon's material${w?'':', so better metals gain more'}.`);
+  if(g!=='Trait')L.push('Uses one etch slot whether it works or not.');
+  if(s.crack)L.push(`On a failure there's a ${crackOf(g)}% chance the weapon cracks. Ward Oil prevents it, Steady hands lowers it.`);
+  else if(g!=='Wild'&&g!=='Trait'&&s.p<100)L.push('A failure just spends the slot. No crack risk.');
+  if(need)L.push(`Your Scribes ${U('scribe')>=need?'can read it':`can't read it yet: needs ${need} Scribes (you have ${U('scribe')})`}.`);
+  L.push(`Breaks down into ${FRAG_BACK[g]||2} scroll fragments.`);
+  return `<div class="statinfo" style="margin-top:6px">${L.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`}
+const scrollName=k=>k.endsWith('|')?'a Wild scroll':'a '+k.replace('|',' scroll of ');
+const bonusScroll=()=>Math.random()<.05*S.ink?`, and a lucky ${scrollName(dropScroll()).slice(2)}`:'';
+/* ---------- misc ---------- */
+function autoRow(){if(U('prospector')<10)return '';const c=autoCost(),l=S.autopick||0;
+  return `<div class="order"><div><b>Auto-pick</b> · level ${l}<div class="note">Swings your pickaxe ${l} time${l===1?'':'s'} a second for you (${Math.round(l*orePerTap())} ore/s now). +1 swing a second per level.</div></div><button class="b sm" data-autopick="1" ${S.gold<c?'disabled':''}>${fmtN(c)} gold</button></div>`}
+function mastRows(){return UNITS.filter(u=>mastOpen(u.k)||(S.mast||{})[u.k]).map(u=>{const n=(S.mast||{})[u.k]||0,open=mastOpen(u.k),c=mastCost(u.k);
+  return `<div class="order"><div><b>${u.n} mastery</b> · level ${n}<div class="note">${u.n}s dig +${n*10}% ore now. Every 100 ${u.n}s (and 10 more Researchers) opens another +10%.</div></div>${open?`<button class="b sm" data-mast="${u.k}" ${S.ore<c?'disabled':''}>${fmtN(c)} ore</button>`:`<span class="note">Next at ${100*(n+1)} ${u.n}s, ${10*(n+1)} Researchers</span>`}</div>`}).join('')}
+function dig(btn,e){
+  const n=orePerTap();S.ore+=n;tally().taps=(tally().taps||0)+1;chips();
+  const r=btn.getBoundingClientRect(),p=document.createElement('span');p.className='pop';p.textContent=`+${n} ore`;
+  p.style.left=((e.clientX||r.left+r.width/2)-r.left)+'px';p.style.top=((e.clientY||r.top+r.height/2)-r.top)+'px';btn.appendChild(p);setTimeout(()=>p.remove(),700);
+  btn.classList.remove('bump');void btn.offsetWidth;btn.classList.add('bump');
+}
+function showModal(html){$('#modal').innerHTML=`<div class="modal"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`}
+function closeModal(){$('#modal').innerHTML='';etchId=null}
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2600)}
+
+document.addEventListener('click',e=>{if(!owns())return;
+  const t=e.target.closest('button,[data-close],#track,[data-scrinfo],[data-uinfo],[data-finfo]');if(!t)return;const d=t.dataset;
+  if(d.uinfo){uOpen=uOpen===d.uinfo?null:d.uinfo;render();return}
+  if(d.finfo){fInfo=fInfo===d.finfo?null:d.finfo;render();return}
+  if(d.scrinfo){scrInfo=scrInfo===d.scrinfo?null:d.scrinfo;if(document.querySelector('[data-use]')&&etchId!=null)etchModal(etchId);else render();return}
+  if(t.classList.contains('tab')){if(tab!==d.t)window.scrollTo({top:0});tab=d.t;resetArm=false;render();return}
+  if(t.id==='track'){if(F)strike();else startForge();return}
+  if(t.id==='quench'){if(F&&!F.done&&F.res.length){F.done=true;finishForge()}return}
+  if(t.id==='tapore'){dig(t,e);return}
+  if(d.arch){pick.arch=d.arch;render()}
+  else if(d.mat){pick.mat=d.mat;render()}
+  else if(d.size){pick.size=+d.size;render()}
+  else if(d.core!==undefined&&t.closest('.anvil')){pick.core=d.core||null;render()}
+  else if(t.id==='heat')startForge();
+  else if(t.id==='strike')strike();
+  else if(d.forgeorder!==undefined){const o=S.orders[+d.forgeorder];pick.arch=o.arch;pick.mat=o.mat;tab=stationOf(o.arch);render();toast(`Set to ${o.mat} ${o.arch}. Heat the blank and aim for ${GR[o.minG].n} or better.`)}
+  else if(d.skip!==undefined){openSlot(+d.skip);save();render()}
+  else if(d.etch)etchModal(+d.etch);
+  else if(d.use)useScroll(d.use);
+  else if(d.again)etchModal(etchId);
+  else if(d.buy){const s=SC[d.buy],st=d.buy==='Trait'?$('#btrait').value:$('#bstat').value;const pr=priceOf(d.buy);if(S.gold>=pr){S.gold-=pr;const k=d.buy+'|'+st;S.scrolls[k]=(S.scrolls[k]||0)+1;save();etchModal(etchId);chips()}}
+  else if(d.close!==undefined){closeModal();if(d.close)tab=d.close;render()}
+  else if(d.eq){const id=+d.eq;if(S.squad.includes(id))S.squad=S.squad.map(i=>i===id?null:i);else{const k=S.squad.slice(0,squadSlots()).indexOf(null);if(k<0){toast('Squad is full. Remove someone first.');return}S.squad[k]=id}save();render()}
+  else if(d.stat){const[id,st]=d.stat.split('|');statOpen=statOpen.id===+id&&statOpen.st===st?{id:null,st:null}:{id:+id,st};render()}
+  else if(d.pick!==undefined){pickModal(+d.pick)}
+  else if(d.put){const[i,id]=d.put.split('|').map(Number),at=S.squad.indexOf(id);if(at>=0)S.squad[at]=S.squad[i];S.squad[i]=id;save();closeModal();render()}
+  else if(d.lock){const w=byId(+d.lock);if(w){w.locked=!w.locked;save();render()}}
+  else if(d.uneq){S.squad=S.squad.map(i=>i===+d.uneq?null:i);save();render()}
+  else if(d.mv){const i=+d.mv;[S.squad[i-1],S.squad[i]]=[S.squad[i],S.squad[i-1]];save();render()}
+  else if(d.sell||d.deliver){const w=byId(+(d.sell||d.deliver));if(!w)return;if(S.squad.includes(w.id)){toast('Unequip this weapon before selling or delivering it.');return}if(w.locked){toast('Unlock this weapon before selling or delivering it.');return}tally().sold++;let price=sellPrice(w),ren=0;
+    if(d.deliver){const oi=orderFor(w);if(oi<0){toast('Unequip this weapon before delivering it.');return}{price=Math.round(price*S.orders[oi].mult);ren=S.orders[oi].ren;openSlot(oi)}}
+    closeModal();S.gold+=price;S.renown+=ren;S.weapons=S.weapons.filter(x=>x!==w);S.squad=S.squad.map(i=>i===w.id?null:i);save();render();toast(`Sold ${wName(w)} for ${price} gold${ren?`, +${ren} renown`:''}`)}
+  else if(d.mend){const w=byId(+d.mend);if(w&&S.gold>=mendCost()){S.gold-=mendCost();w.state=2;if(w.res.length>maxSlots(w))w.res.length=maxSlots(w);save();render();toast('Mended. The scar costs one slot.')}}
+  else if(d.ut){upgTab=d.ut;resetArm=false;render()}
+  else if(d.hire){const k=d.hire,c=unitCost(k);if(S.ore>=c){const before=reached(k);S.ore-=c;S.units[k]=U(k)+1;
+    const after=reached(k);if(after>before){toast(`${UN[k].n} milestone: ${UN[k].ms[after-1][1]}`);syncOrders()}save();render()}}
+  else if(d.learn||d.rankup){const[h,k]=(d.learn||d.rankup).split('|'),tt=S.titles[+h],r=(tt[k]||0)+1,c=titleCost(r);
+    if(S.gold>=c&&r<=TITLE_MAX&&(tt[k]||Object.keys(tt).length<titleSlots())){S.gold-=c;tt[k]=r;save();render()}}
+  else if(d.forget){const[h,k]=d.forget.split('|');delete S.titles[+h][k];save();render()}
+  else if(d.gacha){if((S.frags||0)>=FRAG_COST){S.frags-=FRAG_COST;const k=dropScroll(true);save();render();toast(`Your Scribes hand you ${scrollName(k)}`)}}
+  else if(d.breakdown){const k=d.breakdown,g=k.split('|')[0];if(S.scrolls[k]>0){S.scrolls[k]--;if(!S.scrolls[k])delete S.scrolls[k];S.frags=(S.frags||0)+(FRAG_BACK[g]||2);save();render()}}
+  else if(d.autopick){const c=autoCost();if(S.gold>=c&&U('prospector')>=10){S.gold-=c;S.autopick=(S.autopick||0)+1;save();render()}}
+  else if(d.mast){const k=d.mast,c=mastCost(k);if(mastOpen(k)&&S.ore>=c){S.ore-=c;S.mast=S.mast||{};S.mast[k]=mastNext(k);save();render()}}
+  else if(d.up){const k=d.up,c=cost[k](S[k]);if(S.gold>=c&&S[k]<resCap(k)&&!(k==='night'&&S[k]>=NIGHT_MAX)){S.gold-=c;S[k]++;save();render()}}
+  else if(t.id==='oil'){if(S.dust>=3){S.dust-=3;S.oil++;save();render()}}
+  else if(t.id==='exp')startBattle('exp');
+  else if(t.id==='ghost')startBattle('ghost');
+  else if(t.id==='rep')startBattle('rep');
+  else if(d.spd!==undefined){if(battle){battle.spd=+d.spd;if(battle.spd===0&&battle.live){battle.spd=0}document.querySelectorAll('[data-spd]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.spd===d.spd))}}
+  else if(t.id==='savefile'){saveToFile()}
+  else if(t.id==='loadfile'){const i=$('#loadinput');if(i){i.value='';i.click()}}
+  else if(t.id==='reset'){if(!resetArm){resetArm=true;render()}else{resetArm=false;battle=null;F=null;S=Object.assign(fresh(),{slamMig:1,shopMig:1,specMig:1,statMig:1});tab='mine';syncOrders();save();render();toast('Fresh start')}}
+});
+document.addEventListener('keydown',e=>{if(!owns())return;if(e.code==='Space'&&F&&atStation()){e.preventDefault();strike()}});
+
+function repair(){
+  if(S.units&&!U('arcanist')&&(U('staffcarver')||U('binder')))S.units.arcanist=1; // saves from before the Sanctum keep their magic patterns
+  for(const w of S.weapons||[])if(w.spec==null&&ARCH[w.arch])w.spec=U(specOf(w.arch)); // existing weapons keep today's specialist bonus, frozen
+  if(!S.statMig){S.statMig=1;for(const w of S.weapons||[]){if(!ARCH[w.arch])continue;const e=w.etch||{},atk=atkStat(w.arch);if(e.Edge!=null){e.Crit=(e.Crit||0)+e.Edge;delete e.Edge}if(e.Guard!=null){e.Defense=(e.Defense||0)+e.Guard;delete e.Guard}if(atk==='Magic'&&e.Might){e.Magic=(e.Magic||0)+e.Might;delete e.Might}}
+    const sc=S.scrolls||{};for(const k of Object.keys(sc)){const[g,st]=k.split('|');const nk=st==='Edge'?g+'|Crit':st==='Guard'?g+'|Defense':null;if(nk){sc[nk]=(sc[nk]||0)+sc[k];delete sc[k]}}} // Edge became Crit and Guard became Defense (2026-11-16)
+  if(S.bellows>0){let g=0;for(let l=0;l<S.bellows;l++)g+=Math.round(40*Math.pow(1.9,l));S.gold=(S.gold||0)+g;S.bellows=0;setTimeout(()=>toast(`Bellows is now a Blacksmith milestone: refunded ${g} gold`),600)} // Bellows upgrade removed
+  const f=fresh();
+  if(S.mine&&!S.miners)S.miners=S.mine; delete S.mine;
+  for(const k in f){if(typeof f[k]==='number'&&(typeof S[k]!=='number'||!isFinite(S[k])))S[k]=f[k]}
+  if(!Array.isArray(S.orders))S.orders=[];
+  if(!Array.isArray(S.titles)||S.titles.length!==4)S.titles=[{},{},{},{}];S.titles=S.titles.map(t=>t&&typeof t==='object'?Object.fromEntries(Object.entries(t).filter(([k,r])=>TITLES[k]&&r>=1).map(([k,r])=>[k,Math.min(TITLE_MAX,r|0)])):{});
+  if(!S.cores||typeof S.cores!=='object')S.cores={};
+  if(S.coal){S.ore+=S.coal}delete S.coal;delete S.shovel;delete S.carts;
+  if(!S.units||typeof S.units!=='object'){const old=S.weapons.length||S.stage>1;S.units=old?{miner:S.miners||0,smith:25,merchant:15,squire:10,scribe:12}:{}}delete S.miners;
+  if(S.stage>1&&S.units.quartermaster===undefined&&S.units.smith>=25){S.units.quartermaster=1;S.units.assayer=1}
+  syncOrders();
+  for(const c in S.cores)if(!CORES[c])delete S.cores[c];
+  S.weapons.forEach(w=>{if(w.core&&!CORES[w.core])w.core=null});
+  {let t=0;for(let k=0;k<=LAST_WARDEN;k++)if(S.stage>wardenStage(k))t=k+1;S.matTier=Math.max(S.matTier||0,t)}
+  S.weapons.forEach(w=>{if(!MATS[w.mat])w.mat='Copper'});
+  while(S.squad.length<4)S.squad.push(null);
+  if(!S.tally){const t=tally();for(const w of S.weapons){t.made[w.arch]=(t.made[w.arch]||0)+1;t.total++}t.etched=S.weapons.reduce((a,w)=>a+w.res.length,0)}
+  if(!S.slamMig){S.slamMig=1;if(S.units&&Object.keys(S.units).length)S.slams=Math.min(7,(S.slams||0)+2)} // blanks used to start at 5 slams
+  if(S.units&&!S.shopMig){S.shopMig=1;if(U('smith')>1&&!U('shopkeeper'))S.units.shopkeeper=Math.round(U('smith')*2/3)} // Blacksmiths used to make gold
+  if(S.units&&!S.specMig){S.specMig=1;const old=[[1,'Sword'],[5,'Axe'],[10,'Spear'],[15,'Bow'],[25,'Staff'],[30,'Shield'],[40,'Warhammer']]; // saves from before specialists
+    for(const[n,a]of old){const k=specOf(a);if((U('smith')>=n||S.weapons.some(w=>w.arch===a))&&!U(k))S.units[k]=1}}
+  if(S.units){const keys=[...new Set(RESEARCH.flatMap(r=>Object.keys(r[2])))];while(U('researcher')<30&&keys.some(k=>S[k]>resCap(k)))S.units.researcher=U('researcher')+1} // saves from before Researchers keep their upgrades
+  S.weapons.forEach(w=>{w.traits=w.traits||[]});
+}
+function start(data){
+  if(data&&data.S){S=Object.assign(fresh(),data.S)}else load();
+  const localT=data&&data.S?(+data.S.t||0):(load.t||0);
+  repair();save();cloudInit(localT);
+  let lastDrip=Date.now();const drip=setInterval(()=>{if(!owns()){clearInterval(drip);return}const now=Date.now(),gap=(now-lastDrip)/1000;lastDrip=now;if(gap>30){awayGrant(gap);save();return}S.ore+=orePerSec()/10+(S.autopick||0)*orePerTap()/10;S.gold+=goldPerSec()/10;chips()},100); // income ticks 10 times a second so it rolls smoothly (Jonathan, 2026-11-16)
+  const tk=setInterval(()=>{if(!owns()){clearInterval(tk);return}{const nw=revealUnits();if(nw.length){toast(`A ${nw[0]} is looking for work in the Workshop`);if(tab==='shop')render()}}if(tab==='shop')shopRefresh();
+    if(atStation()&&!F){const h=$('#forgehint');if(h)h.textContent=forgeHint()}
+    if(tickOrders(Date.now())){save();toast('A new customer is waiting in Orders');if(tab==='orders')render();else orderLabel()}
+    document.querySelectorAll('.cd').forEach(el=>el.textContent=fmtCd());
+    if(tab==='fight'&&!battle?.live&&(waitLeft()||/Regrouping/.test(($('#exp')||{}).textContent||''))){const e=$('#exp');if(e){e.textContent=waitLeft()?`Regrouping ${waitLeft()}s`:expLabel();e.disabled=!!waitLeft()||!S.squad.some(id=>id&&byId(id)&&byId(id).state!==1)}const rp=$('#rep');if(rp&&!waitLeft())render()}
+  },1000);
+  const sv=setInterval(()=>{if(!owns()){clearInterval(sv);return}save()},5000);
+  render();
+}
+document.addEventListener('change',e=>{if(e.target&&e.target.id==='loadinput'&&e.target.files&&e.target.files[0])loadFromFile(e.target.files[0])});
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){} // ask the browser not to clear this game's storage
+window.claude?.hot?.snapshot?.(()=>({S}));
+window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
+})();
+</script>
+
+<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body>
+</html>
