@@ -50,7 +50,7 @@ h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--mute
 .hud .chip{flex-direction:column;gap:0;align-items:center;justify-content:center;border-radius:8px;padding:4px 2px;min-width:0;line-height:1.15;font-size:13px}
 .hud .chip small{font-size:9px;letter-spacing:.06em}
 /* Art strip sized like the finished portrait screen: 180x128 world on a 180x320 phone screen */
-.world{--k:clamp(1,calc((min(100vw,980px) - 32px) / 210px),2.2);position:relative;height:clamp(150px,calc((min(100vw,980px) - 32px) * .71),300px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#0e0c14}
+.world{touch-action:pan-y;user-select:none;-webkit-user-select:none;--k:clamp(1,calc((min(100vw,980px) - 32px) / 210px),2.2);position:relative;height:clamp(150px,calc((min(100vw,980px) - 32px) * .71),300px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#0e0c14}
 .strip{position:absolute;inset:0;display:flex;transition:transform .7s cubic-bezier(.45,0,.25,1);will-change:transform}
 .loc{position:relative;flex:0 0 100%;height:100%;overflow:hidden}
 .loc .sky{position:absolute;inset:0}
@@ -1170,6 +1170,14 @@ function showModal(html){$('#modal').innerHTML=`<div class="modal"><div class="s
 function closeModal(){$('#modal').innerHTML='';etchId=null}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2600)}
 
+// Swipe the art scene to walk to the next open place (Jonathan, 2026-11-17): left = next button, right = previous.
+let swipe0=null;
+document.addEventListener('pointerdown',e=>{if(!owns())return;swipe0=e.target.closest('#world')?{x:e.clientX,y:e.clientY}:null});
+document.addEventListener('pointerup',e=>{if(!owns()||!swipe0)return;const dx=e.clientX-swipe0.x,dy=e.clientY-swipe0.y;swipe0=null;
+  if(Math.abs(dx)<40||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  const order=[...document.querySelectorAll('.tab')].map(b=>b.dataset.t).filter(tabOpen),i=order.indexOf(tab),n=order[i+(dx<0?1:-1)];
+  if(n){tab=n;resetArm=false;window.scrollTo({top:0});render()}});
+document.addEventListener('pointercancel',()=>{swipe0=null});
 document.addEventListener('click',e=>{if(!owns())return;
   const t=e.target.closest('button,[data-close],#track,[data-scrinfo],[data-uinfo],[data-finfo]');if(!t)return;const d=t.dataset;
   if(d.uinfo){uOpen=uOpen===d.uinfo?null:d.uinfo;render();return}
