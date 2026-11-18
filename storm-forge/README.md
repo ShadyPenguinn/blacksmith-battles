@@ -93,7 +93,7 @@ Proximity voice, Steam lobbies (no port forwarding), joining a run already in pr
 
 ## Play in a browser
 
-The web build lives in `storm-forge/web/` (offline only; browsers block the UDP that online play uses). Once on `main` it is served at https://shadypenguinn.github.io/blacksmith-battles/storm-forge/web/ . Rebuild after changes with:
+The web build lives in `storm-forge/web/` (offline only; browsers block the UDP that online play uses). Once on `main` it is served at https://shadypenguinn.github.io/blacksmith-battles/storm-forge/web/ (GitHub Pages redeploys on each push to `main`; if a merge doesn't show up, check the Actions tab for a "pages build and deployment" run). Rebuild after changes with:
 
 ```
 godot --headless --path storm-forge --export-release "Web" web/index.html
