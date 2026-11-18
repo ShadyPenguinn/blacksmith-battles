@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless check of the whole pipeline: mine, smelt, hammer, grind, break a door, get struck.
+## Headless check of the whole pipeline: mine, smelt, rope hammer, dunk tank, break a door, get struck.
 ## Run: godot --headless --path storm-forge --script res://tests/smoke_test.gd
 
 var main
@@ -174,38 +174,105 @@ func _run() -> void:
 	main.interact(smelter)
 	check(main.anvil.slot == ingots[0], "ingot sits on the anvil")
 
-	# Smith hammers on the beat.
-	put(smith, main.anvil.global_position + Vector3(0.5, 0, 1.3))
+	# Rope hammer: grab the handle, walk back to haul the head up, let go to slam.
+	main.lightning.next_in = 9999.0
+	check(ingots[0].hot > 20.0, "ingots stay hot long enough to haul the hammer")
+	var anv = main.anvil
+	main.set_controlled(3)   # the keyboard drives the miner otherwise, and nobody's holding a key
+	var lift: float = SF.TRIP["lift"]
+	put(smith, anv.handle_rest())
 	await frames(2)
-	main.anvil.perfect = true
-	for i in SF.ANVIL_HITS:
-		main.use(smith)
+	main.do_action(smith, "use", {})
+	check(smith.rope == anv and smith.state() == "rope", "use by the handle grabs the rope")
+	check(not smith.can("use") and not smith.can("dive"), "hauling only lets you walk")
+	var away = Vector3(anv.rope_anchor().x - anv.global_position.x, 0, 1.0).normalized()
+	smith.in_hold = true
+	smith.in_move = Vector2(away.x, away.z)
+	var most = 0.0
+	for i in 150:
+		await physics_frame
+		var off = smith.global_position - anv.rope_anchor()
+		most = maxf(most, Vector2(off.x, off.z).length())
+	check(most <= SF.TRIP["slack"] + SF.TRIP["pull_len"] + 0.05, "the rope only stretches so far")
+	check(anv.ham_h > lift * 0.5 and anv.ham_h <= lift * SF.TRIP["solo"] + 0.01, "one smith hauls the hammer part way up")
+	check(smith.rope_pull() > 0.95, "walking back pulls the rope taut")
+	smith.in_hold = false
+	smith.in_move = Vector2.ZERO
 	await frames(30)
+	check(smith.rope == null and anv.ham_h == 0.0, "letting go drops the hammer")
+	check(anv.shape > 0.3 and anv.shape < SF.TRIP["shape_needed"], "the slam shapes the ingot a bit")
+	# Two haulers lift it to the top; a full slam knocks nearby smiths off their feet.
+	put(finisher, anv.global_position + Vector3(-0.6, 0, 1.4))
+	var shape_before: float = anv.shape
+	for pair in [[smith, Vector3(0, 0, 0)], [miner, Vector3(0.3, 0, 0.3)]]:
+		put(pair[0], anv.handle_rest() + pair[1])
+		await frames(4)
+		main.do_action(pair[0], "use", {})
+		pair[0].in_hold = true
+		pair[0].in_move = Vector2(away.x, away.z)
+	for i in 150:
+		await physics_frame
+	check(anv.ham_h >= lift - 0.01, "two smiths haul it all the way up")
+	for pp in [smith, miner]:
+		pp.in_hold = false
+		pp.in_move = Vector2.ZERO
+	await frames(30)
+	check(anv.shape - shape_before > 0.9 or items_of("blank").size() == 1, "a full drop is a full-power slam")
+	check(finisher.stun > 0.0, "a full slam knocks back smiths next to the anvil")
+	# Keep slamming until the blade's done: it flies onto the dunk tank seat.
+	for n in 6:
+		if items_of("blank").size() > 0:
+			break
+		for pp in [smith, miner]:
+			put(pp, anv.handle_rest())
+			await frames(4)
+			main.do_action(pp, "use", {})
+			pp.in_hold = true
+			pp.in_move = Vector2(away.x, away.z)
+		for i in 150:
+			await physics_frame
+		for pp in [smith, miner]:
+			pp.in_hold = false
+			pp.in_move = Vector2.ZERO
+		await frames(30)
 	var blanks = items_of("blank")
-	check(blanks.size() == 1, "four on-beat hits shape a blade")
+	check(blanks.size() == 1 and main.anvil.slot == null, "slams shape a blade")
+	await create_timer(SF.DUNK["fling_time"] + 0.3).timeout
+	var tank = main.trough
+	check(tank.slot == blanks[0] and blanks[0].global_position.distance_to(tank.seat_point()) < 0.3, "the blade flies off the anvil onto the dunk seat")
 
-	# Finisher fills the bucket, someone puts the blade on the grindstone, quench, grind.
-	put(finisher, main.trough.global_position + Vector3(0, 0, 1.2))
+	main.set_controlled(0)
+
+	# Bucket still fills at the tank.
+	put(finisher, tank.global_position + Vector3(1.2, 0, 1.0))
+	finisher.stun = 0.0
 	await frames(2)
 	main.use(finisher)
-	check(finisher.held.bucket_full, "bucket fills at the trough")
-	put(smith, blanks[0].global_position)
-	await frames(2)
-	smith.pick_up(blanks[0])
-	put(smith, main.grindstone.global_position + Vector3(0, 0, 1.3))
-	await frames(2)
-	main.interact(smith)
-	check(main.grindstone.slot == blanks[0], "blade sits on the grindstone")
-	put(finisher, main.grindstone.global_position + Vector3(0.6, 0, 1.3))
-	await frames(2)
-	main.grindstone.perfect = true
-	main.use(finisher)
-	check(blanks[0].quenched, "full bucket quenches the blade")
-	for i in SF.GRIND_HITS:
-		main.use(finisher)
-	await frames(30)
+	check(finisher.held.bucket_full, "bucket fills at the dunk tank")
+
+	# Throwing at the tank arcs to the target's height where it crosses the rail.
+	var tp = tank.target_point()
+	put(miner, Vector3(tank.global_position.x + 0.4, 0, tank.global_position.z + 4.5))
+	miner.facing = Vector3(0, 0, -1)
+	await frames(1)
+	var rock = main.spawn_item("ore", miner.hand_position(), {"ore": "copper"})
+	rock.linear_velocity = main.throw_impulse(miner)
+	var closest = 99.0
+	for i in 90:
+		await physics_frame
+		closest = minf(closest, rock.global_position.distance_to(Vector3(miner.global_position.x, tp.y, tp.z)))
+	check(closest < 0.4, "an aimed throw reaches the target's height in your lane")
+	main.despawn(rock)
+
+	# Hit the target: the seat drops, the blade quenches and rides the slide out, finished.
+	var shot = main.spawn_item("ore", tank.target_point() + Vector3(0, 0, 0.35), {"ore": "copper"})
+	shot.linear_velocity = Vector3(0, 0, -7)
+	await frames(3)
+	check(tank.dunk_t >= 0.0, "a thrown chunk on the target dunks the blade")
+	await create_timer(2.2).timeout
 	var weapons = items_of("weapon")
-	check(weapons.size() == 1 and weapons[0].tier == 0, "grinding finishes a copper sword")
+	check(weapons.size() == 1 and weapons[0].tier == 0, "the dunk finishes a copper sword")
+	check(weapons.size() == 1 and weapons[0].global_position.z > tank.global_position.z + 1.0, "the sword comes out the bottom of the slide")
 
 	# Swing at the door until it breaks (copper vs copper door).
 	put(smith, weapons[0].global_position)

@@ -40,8 +40,7 @@ var lightning: Node3D
 var door: StaticBody3D
 var furnace: StaticBody3D
 var anvil: StaticBody3D
-var grindstone: StaticBody3D
-var trough: StaticBody3D
+var trough: StaticBody3D           # the dunk tank
 var rod: StaticBody3D = null
 var items_root: Node3D
 var nodes_root: Node3D
@@ -221,11 +220,11 @@ func area_center() -> Vector3:
 
 const STATION_SIZES := {
 	"furnace": Vector3(2.2, 2.2, 2.2), "anvil": Vector3(1.3, 0.9, 0.7),
-	"grindstone": Vector3(1.4, 1.1, 1.6), "trough": Vector3(1.8, 0.7, 0.9),
+	"trough": Vector3(1.6, 1.0, 1.2),
 }
 const STATION_COLORS := {
 	"furnace": Color(0.45, 0.2, 0.15), "anvil": Color(0.3, 0.3, 0.34),
-	"grindstone": Color(0.7, 0.62, 0.45), "trough": Color(0.25, 0.45, 0.75),
+	"trough": Color(0.55, 0.42, 0.28),
 }
 
 ## Host: pick where everything goes in area i. Area 1 uses the classic layout; later
@@ -235,7 +234,7 @@ func make_layout(i: int) -> Dictionary:
 	var st = {}
 	var spots = []
 	if i == 0:
-		st = {"furnace": Vector2(-6, -3), "anvil": Vector2(-2, -3), "grindstone": Vector2(2.5, -3), "trough": Vector2(6.5, -3)}
+		st = {"furnace": Vector2(-6, -3), "anvil": Vector2(-1.5, -3), "trough": Vector2(4.5, -4)}
 		for k in st:
 			spots.append(st[k])
 	else:
@@ -245,19 +244,22 @@ func make_layout(i: int) -> Dictionary:
 			st.clear()
 			spots.clear()
 			var ok = true
-			for k in ["furnace", "anvil", "grindstone", "trough"]:
+			for k in ["furnace", "anvil", "trough"]:
 				var pt = _free_spot(spots, Rect2(-10, -8, 20, 14), 4.5)
 				if pt == null:
 					ok = false
 					break
 				st[k] = pt
 				spots.append(pt)
-			if ok and st["furnace"].distance_to(st["anvil"]) <= 8.0 and st["anvil"].distance_to(st["grindstone"]) <= 11.0:
+			if ok and st["furnace"].distance_to(st["anvil"]) <= 8.0 and st["anvil"].distance_to(st["trough"]) <= 10.0:
 				break
 	# Keep veins off the bellows either side of the furnace.
 	var bx = 2.2 * 0.5 + SF.BELLOWS["size"].x * 0.5 + 0.35
 	spots.append(st["furnace"] + Vector2(-bx, 0))
 	spots.append(st["furnace"] + Vector2(bx, 0))
+	# ...off the anvil's hammer rope and the dunk tank's slide too.
+	spots.append(st["anvil"] + Vector2(2.4, 0))
+	spots.append(st["trough"] + Vector2(0, 2.0))
 	for k in st:
 		st[k] = Vector2(st[k].x + o.x, st[k].y + o.z)
 	var nodes = []
@@ -300,7 +302,7 @@ func build_area(lay: Dictionary) -> void:
 	for k in areas.keys():
 		if k < i - 1 or k >= i:
 			_free_area(k)
-	for st in [furnace, anvil, grindstone, trough]:
+	for st in [furnace, anvil, trough]:
 		if st and is_instance_valid(st):
 			st.retire()
 	if door and is_instance_valid(door):
@@ -329,13 +331,14 @@ func build_area(lay: Dictionary) -> void:
 	door = _station("door", o + Vector3(0, 3.5, -12.5), Vector3(12, 7, 1), Color(0.35, 0.22, 0.12), {}, root)
 	var st: Dictionary = lay["stations"]
 	var made = {}
-	for k in ["furnace", "anvil", "grindstone", "trough"]:
+	for k in ["furnace", "anvil", "trough"]:
 		var sz: Vector3 = STATION_SIZES[k]
 		made[k] = _station(k, Vector3(st[k].x, sz.y * 0.5, st[k].y), sz, STATION_COLORS[k], {}, root)
 	furnace = made["furnace"]
 	anvil = made["anvil"]
-	grindstone = made["grindstone"]
 	trough = made["trough"]
+	anvil.add_trip_hammer()
+	trough.add_dunk_tank()
 	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
 	fire.position = Vector3(0, -0.5, 1.12)
 	furnace.add_child(fire)
@@ -606,6 +609,7 @@ func _handle_input() -> void:
 	var p = players[controlled]
 	p.in_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	p.in_sprint = Input.is_action_pressed("sprint")
+	p.in_hold = Input.is_action_pressed("use")
 	for a in _pressed_actions():
 		do_action(p, a, {})
 
@@ -624,14 +628,11 @@ func _client_input() -> void:
 	if not net.scripted_input:
 		net.last_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		net.last_sprint = Input.is_action_pressed("sprint")
+		net.last_hold = Input.is_action_pressed("use")
 	if over:
 		return
 	for a in _pressed_actions():
-		var extra = {}
-		if a == "use":
-			# Judge the beat on this screen so lag doesn't eat good hits.
-			extra = {"anvil": anvil.on_beat(anvil.zone()), "grind": grindstone.on_beat(SF.GRIND_ZONE)}
-		net.send_action(a, extra)
+		net.send_action(a, {})
 
 ## Runs a button press for a smith. Host and offline only.
 func do_action(p, action_name: String, extra: Dictionary) -> void:
@@ -658,29 +659,49 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 			elif said.begins_with("Put") or said.begins_with("Placed"):
 				p.act("place")
 		"use":
+			# By the anvil's rope handle: grab it (hold the button to keep hauling).
+			if anvil and anvil.near_handle(p):
+				p.grab_rope(anvil)
+				_say(p, "Hold on and walk back to haul the hammer up. Let go to drop it!")
+				return
 			var h = p.held
 			if h == null or not (h.kind == "tool" or h.kind == "weapon"):
 				use(p)
 				return
-			# Judge the anvil and grindstone beat on the press, but land the blow on contact.
-			var beat_a = extra["anvil"] if extra.has("anvil") else anvil.on_beat(anvil.zone())
-			var beat_g = extra["grind"] if extra.has("grind") else grindstone.on_beat(SF.GRIND_ZONE)
 			_face_target(p)
-			p.act(h.tool if h.kind == "tool" else "weapon", func():
-				anvil.beat_override = 1 if beat_a else 0
-				grindstone.beat_override = 1 if beat_g else 0
-				use(p)
-				anvil.beat_override = -1
-				grindstone.beat_override = -1)
+			p.act(h.tool if h.kind == "tool" else "weapon", func(): use(p))
 		"throw":
 			if p.held:
 				p.act("throw", func():
 					if p.held:
-						p.drop(p.facing * 7.0 + Vector3.UP * 3.5))
+						p.drop(throw_impulse(p)))
 		"debug_strike":
 			lightning.begin_warning(p)
 		"debug_skip":
 			door_broken()
+
+## How hard a throw flies. Thrown at the dunk tank, it arcs to hit the target's height
+## where it crosses the target's rail, in your lane, so the game is timing it.
+func throw_impulse(p) -> Vector3:
+	var plain = p.facing * 7.0 + Vector3.UP * 3.5
+	if trough == null or trough.target == null or trough.dead:
+		return plain
+	var from = p.hand_position()
+	var tp = trough.target_point()
+	var to = tp - from
+	to.y = 0.0
+	if to.length() > SF.DUNK["aim_range"] or to.normalized().dot(p.facing) < 0.5 or absf(p.facing.z) < 0.2:
+		return plain
+	# Where your throw crosses the rail (same depth as the target).
+	var dz = tp.z - from.z
+	var lane = from + p.facing * (dz / p.facing.z)
+	var flat = Vector3(lane.x - from.x, 0, lane.z - from.z)
+	var dist = flat.length()
+	var vh = SF.DUNK["throw_speed"]
+	var t = maxf(dist / vh, 0.15)
+	var grav: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
+	var vy = (tp.y - from.y + 0.5 * grav * t * t) / t
+	return flat.normalized() * vh + Vector3.UP * vy
 
 func set_controlled(i: int) -> void:
 	controlled = i
@@ -688,6 +709,7 @@ func set_controlled(i: int) -> void:
 		players[j].controlled = (j == i)
 		players[j].in_move = Vector2.ZERO
 		players[j].in_sprint = false
+		players[j].in_hold = false
 
 func _update_camera(delta: float) -> void:
 	if players.is_empty():
@@ -798,7 +820,7 @@ func can_accept(st: Node3D, it: RigidBody3D) -> bool:
 	match st.kind:
 		"furnace": return it.kind in ["ore", "scrap", "ingot", "blank"] and not (it.kind == "ingot" and it.hot > 0.0)
 		"anvil": return st.slot == null and it.kind == "ingot"
-		"grindstone": return st.slot == null and it.kind == "blank"
+		"trough": return st.slot == null and it.kind == "blank"
 	return false
 
 ## E: place on a station (from your hand or pockets), pick up, grip with tongs, or drop.
@@ -807,7 +829,7 @@ func interact(p) -> String:
 	if h and h.kind == "tool" and h.tool == "tongs":
 		if h.tongs_load:
 			var load_item = h.tongs_load
-			var st = nearest_station(p, ["anvil", "grindstone", "furnace"])
+			var st = nearest_station(p, ["anvil", "trough", "furnace"])
 			if st and can_accept(st, load_item):
 				h.tongs_load = null
 				load_item.gripped_by = null
@@ -826,7 +848,7 @@ func interact(p) -> String:
 			grab.attach()
 			return _say(p, "Tongs grip " + grab.display_name())
 	# At a station: put in what fits, the thing in your hand first. The furnace takes it all.
-	var st2 = nearest_station(p, ["anvil", "grindstone", "furnace"])
+	var st2 = nearest_station(p, ["anvil", "trough", "furnace"])
 	if st2:
 		var order = p.items()
 		if h:
@@ -887,7 +909,7 @@ func use(p) -> String:
 				return _say(p, "Jump on the bellows to blow air in")
 		"hammer":
 			if nearest_station(p, ["anvil"]):
-				return _say(p, anvil.hammer())
+				return _say(p, "Grab the red rope handle and walk back to raise the big hammer")
 			if _near_door(p):
 				return _say(p, door.door_hit(p, h))
 			for o in players:
@@ -902,12 +924,9 @@ func use(p) -> String:
 						o.revive()
 						h.bucket_full = false
 						return _say(p, "Splash! " + o.role["name"] + " is back up")
-			var spot = nearest_station(p, ["trough", "grindstone"])
-			if spot and spot.kind == "trough":
+			if nearest_station(p, ["trough"]):
 				h.bucket_full = true
 				return _say(p, "Bucket filled")
-			if spot and spot.kind == "grindstone":
-				return _say(p, grindstone.grind(h))
 	return _say(p, "Nothing to use the " + h.tool + " on here")
 
 ## What a swing would hit right now: the station or door it's aimed at, or null.
@@ -936,7 +955,7 @@ func swing_target(p) -> Node3D:
 			for o in players:
 				if o != p and o.stun > 0.0 and _flat_dist(o.global_position, p.global_position) < SF.REACH:
 					return o
-			return nearest_station(p, ["trough", "grindstone"])
+			return nearest_station(p, ["trough"])
 	return null
 
 ## Turn to face what you're about to hit, so the swing lands on it.
@@ -1001,8 +1020,6 @@ func action_fx(p, what: String) -> void:
 			Fx.burst(self, tip, Color(1.0, 0.75, 0.3), 20, 0.9, 7.0, -10.0, 0.4, Vector3.UP, 75.0)
 		"furnace":
 			Fx.burst(self, t.global_position + Vector3(0, t.size.y * 0.5 + 0.2, 0), Color(1.0, 0.5, 0.15, 0.9), 14, 1.4, 3.0, 2.0, 0.6)
-		"grindstone":
-			Fx.burst(self, tip, Color(1.0, 0.9, 0.5), 20, 0.8, 6.0, -6.0, 0.35, p.facing, 30.0)
 		"trough":
 			Fx.burst(self, tip, Color(0.45, 0.7, 1.0, 0.9), 14, 0.9, 4.0, -9.0, 0.5)
 		"door":
@@ -1020,7 +1037,7 @@ func _say(p, msg: String) -> String:
 ## One-line hint for what E and F do right now.
 func hint(p) -> String:
 	var parts = []
-	var near = nearest_station(p, ["node", "furnace", "anvil", "grindstone", "trough"])
+	var near = nearest_station(p, ["node", "furnace", "anvil", "trough"])
 	if near:
 		parts.append("Near: " + (near.ore.capitalize() + " node" if near.kind == "node" else near.kind.capitalize()))
 	elif _near_door(p):
@@ -1033,7 +1050,7 @@ func hint(p) -> String:
 func make_snapshot() -> Dictionary:
 	var ps = []
 	for p in players:
-		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq, not p.is_on_floor(), p.flop])
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq, not p.is_on_floor(), p.flop, p.rope != null])
 	var its = {}
 	for it in get_tree().get_nodes_in_group("item"):
 		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
@@ -1046,8 +1063,8 @@ func make_snapshot() -> Dictionary:
 		"p": ps, "i": its, "n": nodes,
 		"g": [door_index, time_left, area_time, peak_time, over, paused_for_roll, mods],
 		"f": [furnace.heat, furnace.contents, furnace.smelt],
-		"a": [anvil.slot.net_id if anvil.slot else 0, anvil.hits, anvil.misses, anvil.beat_t],
-		"s": [grindstone.slot.net_id if grindstone.slot else 0, grindstone.hits, grindstone.beat_t],
+		"a": [anvil.slot.net_id if anvil.slot else 0, anvil.shape, anvil.ham_h],
+		"t": [trough.slot.net_id if trough.slot else 0, trough.beat_t, trough.dunk_t],
 		"d": [door.hp, door.max_hp, door.tier, door.beat_t],
 		"l": [lightning.ring.visible, lightning.target_pos],
 	}
@@ -1118,9 +1135,10 @@ func apply_snapshot(s: Dictionary) -> void:
 		p.sel = d[5]
 		p.act_name = d[6]
 		p.act_seq = d[7]
-		if d.size() > 9:
+		if d.size() > 10:
 			p.net_air = d[8]
 			p.flop = d[9]
+			p.rope = anvil if d[10] else null
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	# Veins: match by id, add new ones, crumble the ones the host no longer has.
@@ -1147,15 +1165,13 @@ func apply_snapshot(s: Dictionary) -> void:
 	furnace.smelt = f[2]
 	var a: Array = s["a"]
 	anvil.slot = items_by_id.get(a[0]) if a[0] != 0 else null
-	anvil.hits = a[1]
-	anvil.misses = a[2]
-	if absf(anvil.beat_t - a[3]) > 0.25:
-		anvil.beat_t = a[3]
-	var gs: Array = s["s"]
-	grindstone.slot = items_by_id.get(gs[0]) if gs[0] != 0 else null
-	grindstone.hits = gs[1]
-	if absf(grindstone.beat_t - gs[2]) > 0.25:
-		grindstone.beat_t = gs[2]
+	anvil.shape = a[1]
+	anvil.ham_h = a[2]
+	var tk: Array = s["t"]
+	trough.slot = items_by_id.get(tk[0]) if tk[0] != 0 else null
+	if absf(trough.beat_t - tk[1]) > 0.25:
+		trough.beat_t = tk[1]
+	trough.dunk_t = tk[2]
 	var d2: Array = s["d"]
 	door.hp = d2[0]
 	door.max_hp = d2[1]
@@ -1188,6 +1204,12 @@ func apply_event(kind: String, data) -> void:
 		"burp":
 			if furnace:
 				furnace.burp_fx()
+		"slam":
+			if anvil:
+				anvil.slam_fx(data)
+		"dunk":
+			if trough:
+				trough.ding_fx(data)
 		"toast":
 			toasts.append(data)
 			hud.toast(data)

@@ -16,6 +16,7 @@ var autostart := 0             # host: start automatically at this many players
 var snap_t := 0.0
 var last_move := Vector2.ZERO
 var last_sprint := false
+var last_hold := false
 var scripted_input := false   # tests drive last_move themselves
 
 func host(port: int = PORT) -> int:
@@ -73,6 +74,7 @@ func _on_peer_disconnected(id: int) -> void:
 		var p = main.players[smith_of_peer[id]]
 		p.in_move = Vector2.ZERO
 		p.in_sprint = false
+		p.in_hold = false
 		main.toast(p.role["name"] + " disconnected")
 		smith_of_peer.erase(id)
 	elif not main.run_started:
@@ -111,7 +113,7 @@ func _physics_process(delta: float) -> void:
 			snap_t = 0.0
 			_snapshot.rpc(main.make_snapshot())
 	elif mode == "client" and main.run_started:
-		_net_input.rpc_id(1, last_move, last_sprint)
+		_net_input.rpc_id(1, last_move, last_sprint, last_hold)
 
 # ---------------------------------------------------------------- RPCs
 
@@ -125,13 +127,14 @@ func _start(count: int, smith: int) -> void:
 	main.start_client(count, smith)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _net_input(move: Vector2, sprint: bool) -> void:
+func _net_input(move: Vector2, sprint: bool, hold: bool) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	if mode != "host" or not smith_of_peer.has(id):
 		return
 	var p = main.players[smith_of_peer[id]]
 	p.in_move = move.limit_length(1.0)
 	p.in_sprint = sprint
+	p.in_hold = hold
 
 @rpc("any_peer", "call_remote", "reliable")
 func _action(action_name: String, extra: Dictionary) -> void:
