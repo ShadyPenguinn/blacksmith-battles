@@ -145,6 +145,9 @@ func show_menu() -> void:
 	_menu_panel()
 	_menu_label("Storm Forge", 44)
 	_menu_button("Play offline (switch between 4 smiths)", _on_offline)
+	if OS.has_feature("web"):
+		_menu_label("Browser version: offline only for now.\nOnline play needs the downloaded game.", 18)
+		return
 	_menu_button("Host a game", func(): main.menu_host())
 	var ip = LineEdit.new()
 	ip.text = main.join_ip
@@ -199,6 +202,7 @@ func refresh() -> void:
 	var p = main.players[main.controlled]
 	bottom.text = "You: %s   %s" % [p.role["name"], main.hint(p)]
 	for i in hotbar.size():
+		hotbar[i][0].visible = main.run_started
 		var it = p.slots[i] if i < p.slots.size() else null
 		var name = it.display_name() if it and is_instance_valid(it) else ("tool" if i == 0 else "-")
 		hotbar[i][1].text = "%d  %s" % [i + 1, name]

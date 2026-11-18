@@ -78,3 +78,13 @@ godot --headless --path storm-forge --script res://tests/net_test.gd -- client
 ## Not in yet
 
 Proximity voice, Steam lobbies (no port forwarding), joining a run already in progress, client-side movement prediction, real ragdolls (stunned smiths just tumble), the moon mechanic for Moonsilver, the two-door Sky Bridge, the Steel quench window, voting between rolls, and sound.
+
+## Play in a browser
+
+The web build lives in `storm-forge/web/` (offline only; browsers block the UDP that online play uses). Once on `main` it is served at https://shadypenguinn.github.io/blacksmith-battles/storm-forge/web/ . Rebuild after changes with:
+
+```
+godot --headless --path storm-forge --export-release "Web" web/index.html
+```
+
+This needs the Godot 4.7 web export templates (the `web_nothreads_*` ones).
