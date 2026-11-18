@@ -23,6 +23,7 @@ var size = Vector3.ONE
 var node_id = 0          # node: id for online sync
 var chunks = 0           # node: chunks left before the vein is tapped out
 var max_chunks = 0
+var jiggling = false
 var dead = false         # a station left behind in an earlier area: just scenery now
 
 func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Dictionary = {}) -> void:
@@ -75,6 +76,20 @@ func retire() -> void:
 		clear_slot(it)
 		it.station = null
 		it.release()
+
+## Squash and spring back when something hits it.
+func jiggle() -> void:
+	var v = get_node_or_null("Visual")
+	if v == null:
+		return
+	if not has_meta("base_scale") or not jiggling:
+		set_meta("base_scale", v.scale)
+	var base: Vector3 = get_meta("base_scale")
+	jiggling = true
+	var tw = create_tween()
+	tw.tween_property(v, "scale", base * Vector3(1.18, 0.78, 1.18), 0.05)
+	tw.tween_property(v, "scale", base, 0.35).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	tw.finished.connect(func(): jiggling = false)
 
 func set_chunks(n: int) -> void:
 	chunks = n

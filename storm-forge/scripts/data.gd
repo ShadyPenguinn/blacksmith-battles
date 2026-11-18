@@ -193,9 +193,33 @@ const GOOFY := {
 }
 
 ## One-shot animations for actions (clip names in the KayKit Rig_Medium packs).
-const ACTION_ANIMS := {
-	"pickaxe": "Pickaxe", "hammer": "Hammer", "tongs": "Work_A", "bucket": "Use_Item",
-	"weapon": "Chop", "grab": "PickUp", "place": "Interact", "throw": "Throw",
+## One-shot actions. Each plays ONE swing of a KayKit clip: wind up, and at "impact"
+## (seconds into the clip, where the tool meets its target) the effect happens, the
+## tool bounces back (the clip plays backwards for "recoil" seconds), then you settle
+## back to neutral. You can't move or act again until it's done.
+##   clip, impact, speed (clip playback rate), recoil (seconds of bounce-back),
+##   settle (seconds to blend back to idle), squash (goofy body squash on impact),
+##   fx (hit effect: chips, sparks, splash, puff, stars, none)
+const ACTIONS := {
+	"pickaxe": {"clip": "Pickaxe", "impact": 0.88, "speed": 1.6, "recoil": 0.28, "settle": 0.22, "squash": 0.22},
+	"hammer": {"clip": "Hammer", "impact": 0.55, "speed": 1.3, "recoil": 0.26, "settle": 0.2, "squash": 0.25},
+	"weapon": {"clip": "Chop", "impact": 0.76, "speed": 1.5, "recoil": 0.3, "settle": 0.22, "squash": 0.2},
+	"tongs": {"clip": "Work_A", "impact": 0.75, "speed": 2.2, "recoil": 0.22, "settle": 0.18, "squash": 0.18},
+	"bucket": {"clip": "Use_Item", "impact": 0.68, "speed": 1.7, "recoil": 0.25, "settle": 0.2, "squash": 0.15},
+	"grab": {"clip": "PickUp", "impact": 0.5, "speed": 2.2, "recoil": 0.0, "settle": 0.15, "squash": 0.12},
+	"place": {"clip": "Interact", "impact": 0.45, "speed": 2.2, "recoil": 0.0, "settle": 0.15, "squash": 0.1},
+	"throw": {"clip": "Throw", "impact": 0.72, "speed": 1.6, "recoil": 0.0, "settle": 0.2, "squash": 0.12},
+}
+
+## Lightning launch: the struck smith goes flying, limp and buzzing.
+const ZAP := {
+	"launch_up": 8.5,         # up speed when struck
+	"launch_out": 5.0,        # sideways speed, away from where the tools fly
+	"gravity": 22.0,          # floatier than normal while flying
+	"spin": 9.0,              # tumble speed (radians/second) in the air
+	"bounce": 0.35,           # how much of the fall speed bounces back on the first landing
+	"buzz_time": 0.7,         # electrocuted jitter
+	"buzz": 0.07,             # jitter size (meters)
 }
 
 static func material_name(tier: int) -> String:

@@ -168,6 +168,7 @@ func _build_world() -> void:
 	add_child(sun)
 
 	cam = Camera3D.new()
+	Fx.warm_up(self)
 	cam.fov = 55
 	add_child(cam)
 
@@ -639,6 +640,8 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 		return
 	if p.stun > 0.0:
 		return
+	if p.busy() and action_name in ["interact", "use", "throw"]:
+		return   # still swinging: one press, one swing
 	match action_name:
 		"interact":
 			var said = interact(p)
@@ -647,18 +650,25 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 			elif said.begins_with("Put") or said.begins_with("Placed"):
 				p.act("place")
 		"use":
-			anvil.beat_override = (1 if extra["anvil"] else 0) if extra.has("anvil") else -1
-			grindstone.beat_override = (1 if extra["grind"] else 0) if extra.has("grind") else -1
 			var h = p.held
-			if h:
-				p.act(h.tool if h.kind == "tool" else ("weapon" if h.kind == "weapon" else "place"))
-			use(p)
-			anvil.beat_override = -1
-			grindstone.beat_override = -1
+			if h == null or not (h.kind == "tool" or h.kind == "weapon"):
+				use(p)
+				return
+			# Judge the anvil and grindstone beat on the press, but land the blow on contact.
+			var beat_a = extra["anvil"] if extra.has("anvil") else anvil.on_beat(anvil.zone())
+			var beat_g = extra["grind"] if extra.has("grind") else grindstone.on_beat(SF.GRIND_ZONE)
+			_face_target(p)
+			p.act(h.tool if h.kind == "tool" else "weapon", func():
+				anvil.beat_override = 1 if beat_a else 0
+				grindstone.beat_override = 1 if beat_g else 0
+				use(p)
+				anvil.beat_override = -1
+				grindstone.beat_override = -1)
 		"throw":
 			if p.held:
-				p.act("throw")
-				p.drop(p.facing * 7.0 + Vector3.UP * 3.5)
+				p.act("throw", func():
+					if p.held:
+						p.drop(p.facing * 7.0 + Vector3.UP * 3.5))
 		"debug_strike":
 			lightning.begin_warning(p)
 		"debug_skip":
@@ -892,6 +902,91 @@ func use(p) -> String:
 			if spot and spot.kind == "grindstone":
 				return _say(p, grindstone.grind(h))
 	return _say(p, "Nothing to use the " + h.tool + " on here")
+
+## What a swing would hit right now: the station or door it's aimed at, or null.
+func swing_target(p) -> Node3D:
+	var h = p.held
+	if h == null:
+		return null
+	if h.kind == "weapon":
+		return door if _near_door(p) else null
+	match h.tool:
+		"pickaxe":
+			var n = nearest_station(p, ["node"])
+			if n:
+				return n
+			return door if _near_door(p) else null
+		"tongs":
+			return nearest_station(p, ["furnace"])
+		"hammer":
+			var a = nearest_station(p, ["anvil"])
+			if a:
+				return a
+			if _near_door(p):
+				return door
+			for o in players:
+				if o != p and o.stun <= 0.0 and _flat_dist(o.global_position, p.global_position + p.facing) < 1.3:
+					return o
+		"bucket":
+			for o in players:
+				if o != p and o.stun > 0.0 and _flat_dist(o.global_position, p.global_position) < SF.REACH:
+					return o
+			return nearest_station(p, ["trough", "grindstone"])
+	return null
+
+## Turn to face what you're about to hit, so the swing lands on it.
+func _face_target(p) -> void:
+	var t = swing_target(p)
+	if t == null or t is CharacterBody3D:
+		return
+	var aim = t.global_position
+	if t == door:
+		aim = Vector3(p.global_position.x, 0, door.global_position.z)
+	var d = aim - p.global_position
+	d.y = 0
+	if d.length() > 0.2:
+		p.facing = d.normalized()
+
+## The moment a swing lands, on every screen: a burst at the point of contact and a jiggle.
+func action_fx(p, what: String) -> void:
+	var tip = p.hand_position() + p.facing * 0.55
+	tip.y = maxf(tip.y, 0.2)
+	match what:
+		"grab", "place":
+			Fx.dust(self, tip, 3, 0.5)
+			return
+		"throw":
+			return
+	var t = swing_target(p)
+	if t == null:
+		Fx.dust(self, tip, 5, 0.6)       # whiff
+		return
+	if t.has_method("jiggle"):
+		t.jiggle()
+	if p.controlled:
+		shake = maxf(shake, 0.12)
+	if t is CharacterBody3D:
+		if what == "bucket":
+			Fx.burst(self, t.global_position + Vector3(0, 1.2, 0), Color(0.45, 0.7, 1.0, 0.9), 16, 1.0, 4.0, -9.0, 0.6)
+		else:
+			Fx.burst(self, t.global_position + Vector3(0, 1.9, 0), Color(1.0, 0.95, 0.4), 8, 0.8, 2.5, 0.0, 0.7)   # stars
+		return
+	match t.kind:
+		"node":
+			Fx.burst(self, tip, SF.ORE_COLORS.get(t.ore, Color.GRAY), 10, 1.8, 4.5, -12.0, 0.6, -p.facing + Vector3.UP, 60.0, true)
+			Fx.burst(self, tip, Color(1.0, 0.85, 0.5), 8, 0.8, 6.0, -8.0, 0.25, Vector3.UP, 70.0)
+		"anvil":
+			Fx.burst(self, tip, Color(1.0, 0.75, 0.3), 20, 0.9, 7.0, -10.0, 0.4, Vector3.UP, 75.0)
+		"furnace":
+			Fx.burst(self, t.global_position + Vector3(0, t.size.y * 0.5 + 0.2, 0), Color(1.0, 0.5, 0.15, 0.9), 14, 1.4, 3.0, 2.0, 0.6)
+		"grindstone":
+			Fx.burst(self, tip, Color(1.0, 0.9, 0.5), 20, 0.8, 6.0, -6.0, 0.35, p.facing, 30.0)
+		"trough":
+			Fx.burst(self, tip, Color(0.45, 0.7, 1.0, 0.9), 14, 0.9, 4.0, -9.0, 0.5)
+		"door":
+			Fx.burst(self, tip, Color(0.55, 0.5, 0.45), 12, 1.8, 5.0, -12.0, 0.6, -p.facing + Vector3.UP, 60.0, true)
+		_:
+			Fx.dust(self, tip, 6, 0.8)
 
 func _say(p, msg: String) -> String:
 	if p.controlled:
