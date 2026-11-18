@@ -40,7 +40,7 @@ Every smith has 4 slots. Slot 1 holds your one tool, and you can never carry two
 
 1. **Miner** hits an ore node 3 times with the pickaxe. A chunk pops out.
 2. Press E by the chunk to pocket it (the pickaxe stays in hand), then E at the **furnace** to put it in. Hauling slows you down.
-3. **Smelter** uses the tongs at the furnace to pump the bellows. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag.
+3. **Smelter** jumps on the two stomp bellows beside the furnace to blow air in (alternate sides: the same one twice in a row pumps less, and five stomps in under two seconds makes the furnace burp a fireball that knocks everyone back). Tuning is in `SF.BELLOWS`. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag.
 4. The hot ingot pops out. Grab it with the tongs (E) and put it on the **anvil** (E). Bare hands burn and you drop it.
 5. **Smith** hits the anvil with the hammer (F) when the O is in the `===` zone. 4 hits makes a blade, 3 misses makes scrap.
 6. Carry the blade to the **grindstone**. **Finisher** fills the bucket at the trough, quenches the blade, then grinds on the beat 3 times.

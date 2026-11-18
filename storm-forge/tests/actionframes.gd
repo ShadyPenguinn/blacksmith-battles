@@ -1,6 +1,6 @@
 extends SceneTree
 ## Frames of the work swings and a lightning launch, to judge them.
-## -- <out dir> [mine|hammer|zap]   Saves act_XXX.png, one every 2 physics frames.
+## -- <out dir> [mine|hammer|stomp|zap]   Saves act_XXX.png, one every 2 physics frames.
 
 func _initialize() -> void:
 	_run()
@@ -26,6 +26,10 @@ func _run() -> void:
 			p = main.players[2]
 			target = main.anvil
 			p.global_position = target.global_position + Vector3(0, 0.1, 1.3)
+		"stomp":
+			p = main.players[1]
+			target = main.furnace
+			p.global_position = main.furnace.bellows[0].global_position + Vector3(0, 1.5, 0)
 		"zap":
 			target = p
 			p.global_position = main.area_center() + Vector3(0, 0.1, 3)
@@ -38,15 +42,23 @@ func _run() -> void:
 	cam.current = true
 	cam.fov = 45
 	var focus = (p.global_position + target.global_position) * 0.5 + Vector3(0, 0.8, 0)
-	cam.global_position = focus + Vector3(1.2, 2.4, 4.2)
+	cam.global_position = focus + (Vector3(0, 3.0, 7.5) if what == "stomp" else Vector3(1.2, 2.4, 4.2))
 	cam.look_at(focus)
 	for i in 10:
 		await physics_frame
 	var n = 0
-	var presses = [0, 50] if what != "zap" else []
-	for t in (100 if what != "zap" else 110):
+	var presses = [0, 50] if what in ["mine", "hammer"] else []
+	var frames_total = {"zap": 110, "stomp": 170}.get(what, 100)
+	for t in frames_total:
 		if t in presses:
 			main.do_action(p, "use", {})
+		if what == "stomp":
+			if t in [30, 62]:
+				main.do_action(p, "dive", {})
+			if t == 95:
+				p.global_position = main.furnace.bellows[1].global_position + Vector3(0, 1.5, 0)
+			if t == 135:
+				main.furnace.burp()
 		if what == "zap" and t == 5:
 			main.lightning.target = p
 			main.lightning.strike(p.global_position)

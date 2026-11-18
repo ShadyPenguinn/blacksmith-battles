@@ -24,6 +24,11 @@ var node_id = 0          # node: id for online sync
 var chunks = 0           # node: chunks left before the vein is tapped out
 var max_chunks = 0
 var jiggling = false
+var bellows = []         # furnace: the two stomp bellows, left (-1) and right (+1)
+var stomp_log = []       # furnace: recent stomp times, to catch over-stomping
+var last_side = 0
+var last_stomp = -10.0
+var mouth: Node3D        # furnace: the glowing mouth, flares on each puff
 var dead = false         # a station left behind in an earlier area: just scenery now
 
 func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Dictionary = {}) -> void:
@@ -270,6 +275,95 @@ func _seat(item: RigidBody3D) -> void:
 	item.attach()
 
 # --- Tool use ---
+
+## Furnace: two big accordion bellows, one each side, that smiths jump on.
+func add_bellows() -> void:
+	var sz: Vector3 = SF.BELLOWS["size"]
+	for side in [-1, 1]:
+		var b = StaticBody3D.new()
+		b.collision_layer = 1
+		var cs = Build.box_shape(sz)
+		cs.position.y = sz.y * 0.5
+		b.add_child(cs)
+		var squish = Node3D.new()
+		squish.name = "Squish"
+		b.add_child(squish)
+		var leather = Color(0.42, 0.26, 0.16)
+		for i in 3:
+			var w = sz.x * (0.92 if i % 2 == 0 else 0.78)
+			var pleat = Build.box(Vector3(w, sz.y * 0.28, w), leather.darkened(0.12 * (i % 2)))
+			pleat.position.y = sz.y * (0.14 + 0.28 * i)
+			squish.add_child(pleat)
+		var top = Build.box(Vector3(sz.x * 1.05, 0.1, sz.z * 1.05), Color(0.55, 0.38, 0.2))
+		top.position.y = sz.y - 0.02
+		squish.add_child(top)
+		var nozzle = Build.box(Vector3(0.6, 0.16, 0.16), Color(0.35, 0.33, 0.32))
+		nozzle.position = Vector3(-side * (sz.x * 0.5 + 0.2), 0.25, 0)
+		b.add_child(nozzle)
+		b.set_meta("bellows", self)
+		b.set_meta("side", side)
+		add_child(b)
+		b.position = Vector3(side * (size.x * 0.5 + sz.x * 0.5 + 0.35), -size.y * 0.5, 0)
+		bellows.append(b)
+
+## Someone landed on a bellows. power ~1 for a normal jump, more for a belly flop.
+## Host side. Alternating sides pumps best; stomping too fast makes the furnace burp.
+func stomp(side: int, power: float) -> void:
+	if dead:
+		return
+	var g: Dictionary = SF.BELLOWS
+	var now = Time.get_ticks_msec() / 1000.0
+	var gain = g["heat"] * power
+	if side == last_side and now - last_stomp < g["same_side_window"]:
+		gain *= g["same_side_mult"]   # one-footed: the bellows hasn't refilled yet
+	last_side = side
+	last_stomp = now
+	heat = minf(110.0, heat + gain * (1.3 ** main.mod("hot_coals")) * (0.7 ** main.mod("wet_coal")))
+	squish(side)
+	main.net_event("stomp", side)
+	stomp_log.append(now)
+	while not stomp_log.is_empty() and now - stomp_log[0] > g["burp_window"]:
+		stomp_log.pop_front()
+	if stomp_log.size() >= g["burp_stomps"]:
+		stomp_log.clear()
+		burp()
+
+## The bellows squashes flat and springs back, and a puff of air hits the fire.
+func squish(side: int) -> void:
+	var b = bellows[0] if side < 0 else bellows[1]
+	var sq = b.get_node("Squish")
+	var tw = create_tween()
+	tw.tween_property(sq, "scale", Vector3(1.12, 0.45, 1.12), 0.06)
+	tw.tween_property(sq, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var noz = b.global_position + Vector3(-side * (SF.BELLOWS["size"].x * 0.5 + 0.4), 0.25, 0)
+	Fx.burst(main, noz, Color(0.95, 0.95, 0.9, 0.7), 8, 1.2, 4.0, 0.5, 0.35, Vector3(-side, 0.2, 0), 25.0)
+	if mouth:
+		Fx.burst(main, mouth.global_position + Vector3(0, 0.2, 0.15), Color(1.0, 0.55, 0.15), 10, 1.0, 3.0, 3.0, 0.45, Vector3(0, 1, 0.6), 40.0)
+		var tw2 = create_tween()
+		tw2.tween_property(mouth, "scale", Vector3(1.25, 1.8, 1.0), 0.06)
+		tw2.tween_property(mouth, "scale", Vector3.ONE, 0.35)
+
+## Over-stomped: the furnace burps a fireball that knocks everyone nearby back.
+func burp() -> void:
+	var g: Dictionary = SF.BELLOWS
+	heat = maxf(0.0, heat - g["burp_heat_loss"])
+	burp_fx()
+	main.net_event("burp", null)
+	main.toast("BURP! Too much air. Easy on the bellows.")
+	for p in main.players:
+		var d = p.global_position - global_position
+		d.y = 0
+		if d.length() < g["burp_radius"] and p.stun <= 0.0:
+			var away = d.normalized() if d.length() > 0.1 else Vector3(0, 0, 1)
+			p.stun = g["burp_stun"]
+			p.velocity = away * g["burp_push"] + Vector3.UP * 6.0
+
+func burp_fx() -> void:
+	var at = global_position + Vector3(0, 0, size.z * 0.5 + 0.3)
+	Fx.burst(main, at, Color(1.0, 0.5, 0.1), 40, 2.5, 7.0, 2.0, 0.7, Vector3(0, 0.6, 1), 70.0)
+	Fx.burst(main, at + Vector3(0, 0.8, 0), Color(0.25, 0.22, 0.2, 0.8), 20, 2.5, 3.0, 2.5, 1.0, Vector3.UP, 50.0)
+	if main.has_method("flash"):
+		main.shake = maxf(main.shake, 0.35)
 
 func pump() -> void:
 	heat = minf(110.0, heat + SF.HEAT_PER_PUMP * (1.3 ** main.mod("hot_coals")) * (0.7 ** main.mod("wet_coal")))
