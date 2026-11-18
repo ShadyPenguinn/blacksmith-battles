@@ -57,11 +57,17 @@ When the storm timer runs out you get a 60-second last stand with ever faster li
 
 Every number is at the top of `scripts/data.gd`: timer, strike rate, heat bands, beat windows, door HP, recipes, buffs and debuffs.
 
-## Dropping in KayKit models
+## Models
 
-Copy models into `assets/kaykit/` (git ignores that folder) and set paths in `SF.MODELS` in `scripts/data.gd`, for example `"anvil": "res://assets/kaykit/anvil.gltf"`. Any key left empty keeps its placeholder shape. Collision boxes stay the same size, so scale the model to fit.
+The smiths, tools, anvil, grindstone, ore rocks, ore chunks, bars and swords are KayKit models (CC0, by Kay Lousberg) in `assets/models/`. Each smith is a different KayKit adventurer: Barbarian (Miner), Engineer (Smelter), Knight (Smith) and Druid (Finisher). They use the KayKit Rig_Medium animations for idle, walking, running, dodging, getting struck, pickaxe swings, hammering, throwing and picking up. Ores and metals are told apart by a color tint. The furnace, trough, door and walls are still placeholder boxes.
 
-Characters: set `smith` for all four, or `smith_miner`, `smith_smelter`, `smith_smith` and `smith_finisher` for one each. A rigged model's AnimationPlayer is used automatically: clips are picked by name (idle, walk, run, dodge, hit), and the word lists are in `SF.ANIM_WORDS`. `SF.SMITH_MODEL_SCALE` and `SF.SMITH_MODEL_YAW` fix size and facing.
+Every model path is in `SF.MODELS` in `scripts/data.gd`. An entry is a path, or `{"path", "rot"}` to turn the model first. Each model is scaled to fit its collision box, and an empty entry keeps the placeholder. Animation clip choices are in `SF.ANIM_WORDS` and `SF.ACTION_ANIMS`, and the camera distance is `SF.CAM_OFFSET`. Copy more models from the full collection into `assets/models/` and point a key at them. `assets/kaykit/` is git-ignored if you want a local scratch folder.
+
+`tests/closeup.gd` renders close-up frames of a smith idling, walking, mining and getting struck:
+
+```
+xvfb-run godot --rendering-driver opengl3 --path storm-forge --script res://tests/closeup.gd -- /some/folder
+```
 
 ## Tests
 

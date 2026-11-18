@@ -114,38 +114,50 @@ const DEBUFFS := [
 ## Drop-in models. Put a .glb/.gltf path here (for example a KayKit file you copied into
 ## res://assets/kaykit/) and that object uses the model instead of the placeholder shape.
 ## Leave a value empty to keep the placeholder.
-## Character models: one per role, or "smith" for all four. Rigged models with an
-## AnimationPlayer get idle/walk/run/dodge/hit animations picked by name.
+## Models. A path, or {"path", "rot"} where rot (degrees) turns the model before it's
+## scaled and centered to fit the thing's collision box. Empty keeps the placeholder.
+## Characters: one per role, or "smith" for all four. They use the KayKit Rig_Medium
+## animations in SMITH_ANIMS. All of these are KayKit (CC0), in assets/models/.
+const M := "res://assets/models/"
 const MODELS := {
 	"smith": "",
-	"smith_miner": "",
-	"smith_smelter": "",
-	"smith_smith": "",
-	"smith_finisher": "",
-	"pickaxe": "",
-	"tongs": "",
-	"hammer": "",
-	"bucket": "",
-	"weapon": "",
-	"ingot": "",
-	"ore_chunk": "",
-	"ore_node": "",
+	"smith_miner": M + "characters/Barbarian.glb",
+	"smith_smelter": M + "characters/Engineer.glb",
+	"smith_smith": M + "characters/Knight.glb",
+	"smith_finisher": M + "characters/Druid.glb",
+	"pickaxe": {"path": M + "tools/pickaxe.gltf", "rot": Vector3(-90, 0, 0)},
+	"tongs": {"path": M + "tools/tongs.gltf", "rot": Vector3(-90, 0, 0)},
+	"hammer": {"path": M + "tools/hammer.gltf", "rot": Vector3(-90, 0, 0)},
+	"bucket": M + "tools/bucket_metal.gltf",
+	"weapon": {"path": M + "weapons/sword_A.gltf", "rot": Vector3(-90, 0, 0)},
+	"blank": {"path": M + "weapons/sword_A.gltf", "rot": Vector3(-90, 0, 0)},
+	"ingot": {"path": M + "resources/Copper_Bar.gltf", "rot": Vector3(0, 90, 0)},
+	"ore_chunk": M + "resources/Copper_Nugget_Large.gltf",
+	"ore_node": M + "dungeon/rocks.gltf",
 	"furnace": "",
-	"anvil": "",
-	"grindstone": "",
+	"anvil": M + "tools/anvil.gltf",
+	"grindstone": M + "tools/grindstone.gltf",
 	"trough": "",
 	"door": "",
 }
+const SMITH_ANIMS := [M + "anims/Rig_Medium_MovementBasic.glb", M + "anims/Rig_Medium_General.glb",
+	M + "anims/Rig_Medium_Tools.glb", M + "anims/Rig_Medium_MovementAdvanced.glb"]
 
-const SMITH_MODEL_SCALE := 1.0   # KayKit characters may need scaling to fit the 1.7 m capsule
+const CAM_OFFSET := Vector3(0, 11, 9.5)  # camera sits this far above and behind the smith you play
+const SMITH_MODEL_SCALE := 0.75  # KayKit characters are ~2.4 m; this fits the 1.7 m capsule
 const SMITH_MODEL_YAW := PI       # KayKit models face +Z; Godot's forward is -Z
 ## Animation picked for each state: the first clip whose name contains one of these words.
 const ANIM_WORDS := {
-	"idle": ["idle"],
+	"idle": ["idle_a", "idle"],
 	"walk": ["walking_a", "walk"],
 	"run": ["running_a", "run"],
-	"dive": ["dodge", "roll", "jump"],
-	"stun": ["hit", "death", "lie"],
+	"dive": ["dodge_forward", "dodge", "roll"],
+	"stun": ["death_a", "hit", "death"],
+}
+## One-shot animations for actions (clip names in the KayKit Rig_Medium packs).
+const ACTION_ANIMS := {
+	"pickaxe": "Pickaxe", "hammer": "Hammer", "tongs": "Work_A", "bucket": "Use_Item",
+	"weapon": "Chop", "grab": "PickUp", "place": "Interact", "throw": "Throw",
 }
 
 static func material_name(tier: int) -> String:
@@ -159,11 +171,75 @@ static func material_color(tier: int) -> Color:
 	return MATERIALS[tier]["color"]
 
 ## Tries to load a drop-in model. Returns null when none is set or the file is missing.
+static func model_path(key: String) -> String:
+	var v = MODELS.get(key, "")
+	if v is Dictionary:
+		return v.get("path", "")
+	return v
+
 static func try_model(key: String) -> Node3D:
-	var path: String = MODELS.get(key, "")
+	var path = model_path(key)
 	if path == "" or not ResourceLoader.exists(path):
 		return null
 	var res = load(path)
 	if res is PackedScene:
 		return res.instantiate()
 	return null
+
+## A model turned, scaled and centered to fill a box of this size, or null if the key is empty.
+## The holder's "grip" meta is where the model's own origin ended up (for hand slots).
+## by_length: scale so the longest side matches (tools); otherwise fit inside the box.
+static func fitted_model(key: String, size: Vector3, by_length: bool = false) -> Node3D:
+	var model = try_model(key)
+	if model == null:
+		return null
+	var v = MODELS.get(key, "")
+	var rot: Vector3 = v.get("rot", Vector3.ZERO) if v is Dictionary else Vector3.ZERO
+	var holder = Node3D.new()
+	holder.rotation_degrees = rot
+	holder.add_child(model)
+	var box = mesh_aabb(model, holder.transform)
+	var k = 1.0
+	if box.size.x > 0.0 and box.size.y > 0.0 and box.size.z > 0.0:
+		k = minf(size.x / box.size.x, minf(size.y / box.size.y, size.z / box.size.z))
+		if by_length:
+			k = maxf(size.x, maxf(size.y, size.z)) / maxf(box.size.x, maxf(box.size.y, box.size.z))
+	var center = (box.position + box.size * 0.5) * k
+	var outer = Node3D.new()
+	outer.add_child(holder)
+	holder.scale = Vector3.ONE * k
+	holder.position = -center
+	outer.set_meta("grip", Transform3D(Basis.from_euler(rot * PI / 180.0), -center))
+	return outer
+
+## Bounding box of every mesh under n, with n placed at xf.
+static func mesh_aabb(n: Node, xf: Transform3D) -> AABB:
+	var box = AABB()
+	var first = true
+	var stack = [[n, xf]]
+	while not stack.is_empty():
+		var top = stack.pop_back()
+		var node: Node = top[0]
+		var t: Transform3D = top[1]
+		if node is MeshInstance3D and node.mesh:
+			var b = t * node.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+		for c in node.get_children():
+			var ct = t * c.transform if c is Node3D else t
+			stack.append([c, ct])
+	return box
+
+## A see-through color laid over a textured model, to tell ores and metals apart.
+static func tint(n: Node, c: Color, strength: float = 0.5, glow: float = 0.0) -> void:
+	var m = StandardMaterial3D.new()
+	m.albedo_color = Color(c.r, c.g, c.b, strength)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if glow > 0.0:
+		m.emission_enabled = true
+		m.emission = c
+		m.emission_energy_multiplier = glow
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		mi.material_overlay = m
+	if n is MeshInstance3D:
+		n.material_overlay = m

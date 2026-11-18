@@ -40,7 +40,9 @@ func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Di
 	collision_mask = 0
 	add_child(Build.box_shape(size))
 	var model_key = "ore_node" if kind == "node" else kind
-	var visual = SF.try_model(model_key)
+	var visual = SF.fitted_model(model_key, size)
+	if visual and kind == "node":
+		SF.tint(visual, SF.ORE_COLORS.get(ore, Color.GRAY), 0.55, 0.6 if ore == "starmetal" else 0.0)
 	if visual == null:
 		visual = Build.box(size, color, 0.5 if ore == "starmetal" else 0.0)
 	visual.name = "Visual"
@@ -59,6 +61,8 @@ func set_ore(o: String) -> void:
 	var v = get_node_or_null("Visual")
 	if v is MeshInstance3D:
 		(v as MeshInstance3D).material_override = Build.mat(SF.ORE_COLORS.get(o, Color.GRAY), 0.6 if o == "starmetal" else 0.0)
+	elif v:
+		SF.tint(v, SF.ORE_COLORS.get(o, Color.GRAY), 0.55, 0.6 if o == "starmetal" else 0.0)
 
 ## Leave this station behind in an old area: it stops working and drops what's on it.
 func retire() -> void:

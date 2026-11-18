@@ -220,7 +220,7 @@ func area_center() -> Vector3:
 
 const STATION_SIZES := {
 	"furnace": Vector3(2.2, 2.2, 2.2), "anvil": Vector3(1.3, 0.9, 0.7),
-	"grindstone": Vector3(1.1, 1.0, 1.1), "trough": Vector3(1.8, 0.7, 0.9),
+	"grindstone": Vector3(1.4, 1.1, 1.6), "trough": Vector3(1.8, 0.7, 0.9),
 }
 const STATION_COLORS := {
 	"furnace": Color(0.45, 0.2, 0.15), "anvil": Color(0.3, 0.3, 0.34),
@@ -641,15 +641,23 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 		return
 	match action_name:
 		"interact":
-			interact(p)
+			var said = interact(p)
+			if said.begins_with("Picked") or said.begins_with("Swapped") or said.begins_with("Tongs"):
+				p.act("grab")
+			elif said.begins_with("Put") or said.begins_with("Placed"):
+				p.act("place")
 		"use":
 			anvil.beat_override = (1 if extra["anvil"] else 0) if extra.has("anvil") else -1
 			grindstone.beat_override = (1 if extra["grind"] else 0) if extra.has("grind") else -1
+			var h = p.held
+			if h:
+				p.act(h.tool if h.kind == "tool" else ("weapon" if h.kind == "weapon" else "place"))
 			use(p)
 			anvil.beat_override = -1
 			grindstone.beat_override = -1
 		"throw":
 			if p.held:
+				p.act("throw")
 				p.drop(p.facing * 7.0 + Vector3.UP * 3.5)
 		"debug_strike":
 			lightning.begin_warning(p)
@@ -668,7 +676,7 @@ func _update_camera(delta: float) -> void:
 		return
 	var p = players[controlled]
 	var focus: Vector3 = p.global_position.lerp(area_center(), 0.35)
-	var want = focus + Vector3(0, 13, 11)
+	var want = focus + SF.CAM_OFFSET
 	cam.global_position = cam.global_position.lerp(want, clampf(delta * 4.0, 0.0, 1.0)) if cam.global_position != Vector3.ZERO else want
 	shake = maxf(0.0, shake - delta)
 	cam.look_at(focus + Vector3(0, 0.5, -1), Vector3.UP)
@@ -908,7 +916,7 @@ func hint(p) -> String:
 func make_snapshot() -> Dictionary:
 	var ps = []
 	for p in players:
-		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel])
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq])
 	var its = {}
 	for it in get_tree().get_nodes_in_group("item"):
 		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
@@ -991,6 +999,8 @@ func apply_snapshot(s: Dictionary) -> void:
 			p.slots[k] = items_by_id.get(sid) if sid != 0 else null
 		p.facing = d[4]
 		p.sel = d[5]
+		p.act_name = d[6]
+		p.act_seq = d[7]
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	# Veins: match by id, add new ones, crumble the ones the host no longer has.

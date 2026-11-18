@@ -39,6 +39,33 @@ var anim_names = {}                 # state -> clip name
 var anim_state = ""
 var last_pos = Vector3.ZERO
 var has_model = false
+var skel: Skeleton3D = null
+var hand_bone = -1
+var act_t = 0.0                     # a one-shot action animation is playing
+var act_name = ""                   # last action, sent to clients so puppets play it too
+var act_seq = 0
+var act_seen = 0
+static var anim_lib: AnimationLibrary = null
+
+## Every clip from the KayKit animation packs, loaded once and shared by all smiths.
+static func _shared_anims() -> AnimationLibrary:
+	if anim_lib:
+		return anim_lib
+	anim_lib = AnimationLibrary.new()
+	for path in SF.SMITH_ANIMS:
+		if not ResourceLoader.exists(path):
+			continue
+		var scene = load(path).instantiate()
+		for ap in scene.find_children("*", "AnimationPlayer", true, false):
+			for n in ap.get_animation_list():
+				var clip = String(n).get_file()
+				if not anim_lib.has_animation(clip):
+					anim_lib.add_animation(clip, ap.get_animation(n))
+		scene.free()
+	for loop_clip in ["Idle_A", "Walking_A", "Running_A"]:
+		if anim_lib.has_animation(loop_clip):
+			anim_lib.get_animation(loop_clip).loop_mode = Animation.LOOP_LINEAR
+	return anim_lib
 
 func setup(p_main: Node, p_idx: int) -> void:
 	main = p_main
@@ -67,7 +94,16 @@ func setup(p_main: Node, p_idx: int) -> void:
 		model.rotation.y = SF.SMITH_MODEL_YAW
 		model.scale = Vector3.ONE * SF.SMITH_MODEL_SCALE
 		visual.add_child(model)
+		var skels = model.find_children("*", "Skeleton3D", true, false)
+		if not skels.is_empty():
+			skel = skels[0]
+			hand_bone = skel.find_bone("handslot.r")
 		var players_found = model.find_children("*", "AnimationPlayer", true, false)
+		if players_found.is_empty() and skel:
+			var ap = AnimationPlayer.new()
+			model.add_child(ap)
+			ap.add_animation_library("", _shared_anims())
+			players_found = [ap]
 		if not players_found.is_empty():
 			anim = players_found[0]
 			var clips = anim.get_animation_list()
@@ -162,6 +198,8 @@ func clear_slots() -> void:
 	sel = 0
 
 func hand_position() -> Vector3:
+	if skel and hand_bone >= 0:
+		return (skel.global_transform * skel.get_bone_global_pose(hand_bone)).origin
 	return global_position + Vector3(0, 1.1, 0) + facing * 0.65
 
 ## Pick the animation for what the smith is doing right now.
@@ -170,6 +208,17 @@ func _animate(delta: float) -> void:
 	last_pos = global_position
 	if anim == null:
 		return
+	if act_seq != act_seen:
+		act_seen = act_seq
+		var clip = SF.ACTION_ANIMS.get(act_name, "")
+		if anim.has_animation(clip) and stun <= 0.0:
+			anim.play(clip, 0.08, 1.4)
+			act_t = anim.get_animation(clip).length / 1.4
+			anim_state = "act"
+	if act_t > 0.0 and stun <= 0.0:
+		act_t -= delta
+		if act_t > 0.0 and dive_t <= 0.0:
+			return
 	var state = "idle"
 	if stun > 0.0:
 		state = "stun"
@@ -185,6 +234,18 @@ func _animate(delta: float) -> void:
 		anim_state = state
 		anim.play(anim_names[state], 0.15)
 
+## Play a one-shot action (mining swing, hammer blow, throw...). Host side; clients copy it.
+func act(what: String) -> void:
+	act_name = what
+	act_seq += 1
+
+## Where held things go: the model's right-hand slot, or a spot in front of the body.
+func hand_transform() -> Transform3D:
+	if skel and hand_bone >= 0:
+		var t = skel.global_transform * skel.get_bone_global_pose(hand_bone)
+		return Transform3D(t.basis.orthonormalized(), t.origin)
+	return Transform3D(Basis.from_euler(Vector3(0, visual.rotation.y, 0)), hand_position())
+
 func _physics_process(delta: float) -> void:
 	ring.visible = controlled
 	_animate(delta)
@@ -199,8 +260,9 @@ func _physics_process(delta: float) -> void:
 
 	if stun > 0.0:
 		stun -= delta
-		visual.rotation.z += delta * 14.0
-		visual.rotation.x = 1.2
+		if not has_model:
+			visual.rotation.z += delta * 14.0
+			visual.rotation.x = 1.2
 		velocity.x = move_toward(velocity.x, 0.0, 12.0 * delta)
 		velocity.z = move_toward(velocity.z, 0.0, 12.0 * delta)
 		move_and_slide()
@@ -231,7 +293,8 @@ func _physics_process(delta: float) -> void:
 		dive_t -= delta
 		velocity.x = dive_dir.x * SF.DIVE_SPEED
 		velocity.z = dive_dir.z * SF.DIVE_SPEED
-		visual.rotation.x = -0.9
+		if not has_model:
+			visual.rotation.x = -0.9
 	else:
 		visual.rotation.x = 0.0
 		velocity.x = dir.x * speed
@@ -258,14 +321,17 @@ func _update_held(delta: float) -> void:
 		var it = slots[i]
 		if it == null:
 			continue
-		if i == sel:
+		if i == sel and has_model and it.has_model:
+			it.global_transform = hand_transform() * it.grip.affine_inverse()
+		elif i == sel:
 			it.global_position = hand_position()
+			it.global_rotation = yaw
 		else:
 			it.global_position = global_position + Vector3(0, 0.9 + 0.38 * back, 0) - facing * 0.5
+			it.global_rotation = yaw
 			back += 1
-		it.global_rotation = yaw
 		if it.tongs_load and is_instance_valid(it.tongs_load):
-			it.tongs_load.global_position = it.global_position + facing * 0.55
+			it.tongs_load.global_position = it.global_position - it.global_transform.basis.z * 0.55
 			it.tongs_load.global_rotation = yaw
 	# Bare hands (or pockets) on a hot ingot: ow.
 	var hot_one = null

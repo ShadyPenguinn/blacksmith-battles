@@ -22,6 +22,9 @@ var puppet = false                   # client side: follow snapshots
 var net_pos = Vector3.ZERO
 var net_rot = Vector3.ZERO
 var net_loose = true
+var has_model = false
+var grip = Transform3D.IDENTITY   # where the model's own origin sits: lined up with a hand slot when held
+var tint_mat: StandardMaterial3D = null
 
 func setup(p_kind: String, opts: Dictionary = {}) -> void:
 	kind = p_kind
@@ -35,8 +38,12 @@ func setup(p_kind: String, opts: Dictionary = {}) -> void:
 	collision_mask = 1 | 2
 	var size = _size()
 	add_child(Build.box_shape(size))
-	visual = SF.try_model(_model_key())
-	if visual == null:
+	visual = SF.fitted_model(_model_key(), size, true)
+	if visual:
+		has_model = true
+		grip = visual.get_meta("grip")
+		retint()
+	else:
 		visual = _placeholder(size)
 	add_child(visual)
 	tag = Build.label("", 32)
@@ -47,11 +54,26 @@ func setup(p_kind: String, opts: Dictionary = {}) -> void:
 	if kind == "weapon":
 		durability = SF.WEAPON_DURABILITY
 
+## Color the model by ore or metal so you can tell them apart.
+func retint() -> void:
+	if not has_model:
+		return
+	match kind:
+		"ore":
+			SF.tint(visual, SF.ORE_COLORS.get(ore, Color.GRAY), 0.6, 0.6 if ore == "starmetal" else 0.0)
+		"scrap":
+			SF.tint(visual, SF.material_color(tier).darkened(0.5), 0.6)
+		"ingot", "blank", "weapon":
+			SF.tint(visual, SF.material_color(tier), 0.0 if tier == 0 else 0.5)
+	var mi = visual.find_children("*", "MeshInstance3D", true, false)
+	tint_mat = mi[0].material_overlay if not mi.is_empty() else null
+
 func _model_key() -> String:
 	match kind:
 		"tool": return tool
 		"ore", "scrap": return "ore_chunk"
-		"ingot", "blank": return "ingot"
+		"ingot": return "ingot"
+		"blank": return "blank"
 		"weapon": return "weapon"
 	return ""
 
@@ -133,7 +155,11 @@ func _physics_process(delta: float) -> void:
 	elif kind == "ingot" and hot > 0.0:
 		hot = maxf(0.0, hot - delta)
 	# Glow while hot.
-	if kind == "ingot" and visual.get_child_count() > 0 and visual.get_child(0) is MeshInstance3D:
+	if kind == "ingot" and has_model and tint_mat:
+		tint_mat.emission_enabled = hot > 0.0
+		tint_mat.emission = Color(1.0, 0.45, 0.1)
+		tint_mat.emission_energy_multiplier = 1.5 * hot / SF.INGOT_HOT_TIME
+	elif kind == "ingot" and visual.get_child_count() > 0 and visual.get_child(0) is MeshInstance3D:
 		var m: StandardMaterial3D = (visual.get_child(0) as MeshInstance3D).material_override
 		if m:
 			m.emission_enabled = hot > 0.0
