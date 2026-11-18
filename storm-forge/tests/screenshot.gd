@@ -19,6 +19,7 @@ func _run() -> void:
 	var out: String = args[0] if args.size() > 0 else "user://"
 	root.size = Vector2i(1600, 900)
 	var main = load("res://main.tscn").instantiate()
+	main.start_mode = "offline"
 	root.add_child(main)
 	await frames(10)
 	var miner = main.players[0]

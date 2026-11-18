@@ -17,6 +17,11 @@ var station: Node3D = null           # station this sits on
 var owner_idx = -1                  # which smith spawned with this tool
 var visual: Node3D
 var tag: Label3D
+var net_id = 0                       # same id on host and clients
+var puppet = false                   # client side: follow snapshots
+var net_pos = Vector3.ZERO
+var net_rot = Vector3.ZERO
+var net_loose = true
 
 func setup(p_kind: String, opts: Dictionary = {}) -> void:
 	kind = p_kind
@@ -122,7 +127,10 @@ func is_free() -> bool:
 	return holder == null and gripped_by == null
 
 func _physics_process(delta: float) -> void:
-	if kind == "ingot" and hot > 0.0:
+	if puppet:
+		global_position = global_position.lerp(net_pos, clampf(delta * 15.0, 0.0, 1.0))
+		global_rotation = net_rot
+	elif kind == "ingot" and hot > 0.0:
 		hot = maxf(0.0, hot - delta)
 	# Glow while hot.
 	if kind == "ingot" and visual.get_child_count() > 0 and visual.get_child(0) is MeshInstance3D:
@@ -133,7 +141,7 @@ func _physics_process(delta: float) -> void:
 			m.emission_energy_multiplier = 1.5 * hot / SF.INGOT_HOT_TIME
 	tag.text = ""
 	if kind in ["weapon", "ingot"] or (kind == "tool" and tool == "bucket"):
-		if holder == null and station == null and gripped_by == null:
+		if (puppet and net_loose) or (not puppet and holder == null and station == null and gripped_by == null):
 			tag.text = display_name()
 
 ## Freeze in place and follow a transform each frame (held, gripped, or on a station).

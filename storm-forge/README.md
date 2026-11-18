@@ -1,6 +1,6 @@
 # Storm Forge (graybox)
 
-Offline graybox of the co-op forge game: four smiths, one door, a storm on the clock.
+Graybox of the co-op forge game, offline or online for up to 4 players: four smiths, one door, a storm on the clock.
 Placeholder shapes only. Plan doc: https://claude.ai/artifact/1pAswscawc9NFi3Y5E4wYF
 
 ## Run it
@@ -8,7 +8,15 @@ Placeholder shapes only. Plan doc: https://claude.ai/artifact/1pAswscawc9NFi3Y5E
 Open this `storm-forge` folder in Godot 4.5 or newer (tested on 4.7) and press F5.
 It uses Jolt physics, which is built into Godot.
 
-You control one smith at a time. Press 1-4 to jump between them and run the whole pipeline yourself.
+The menu offers three choices:
+
+- **Play offline**: you control one smith at a time. Press 1-4 to jump between them and run the whole pipeline yourself.
+- **Host a game**: wait in the lobby for friends, then press Start. Each player gets one smith in join order (host = Miner, then Smelter, Smith, Finisher). Smiths nobody plays leave their tool on the floor for anyone to pick up.
+- **Join**: type the host's IP address and press Join.
+
+Online uses direct IP on port 7777 (UDP). On the same Wi-Fi, use the host's local IP (like 192.168.x.x). Over the internet, the host forwards UDP port 7777 on their router. Steam lobbies will replace this later.
+
+Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2` (host starts when 2 players are in). Put them after `--`, for example `godot --path storm-forge -- --host`.
 
 | Key | Does |
 | --- | --- |
@@ -55,6 +63,13 @@ xvfb-run godot --rendering-driver opengl3 --path storm-forge --script res://test
 
 The smoke test runs the whole pipeline from ore to a broken door, plus lightning, revive and game over.
 
+The online test runs a real host and client over localhost. Start both at once:
+
+```
+godot --headless --path storm-forge --script res://tests/net_test.gd -- host --autostart 2
+godot --headless --path storm-forge --script res://tests/net_test.gd -- client
+```
+
 ## Not in yet
 
-Online play and proximity voice, real ragdolls (stunned smiths just tumble), the moon mechanic for Moonsilver, the two-door Sky Bridge, the Steel quench window, voting between rolls, and sound.
+Proximity voice, Steam lobbies (no port forwarding), joining a run already in progress, client-side movement prediction, real ragdolls (stunned smiths just tumble), the moon mechanic for Moonsilver, the two-door Sky Bridge, the Steel quench window, voting between rolls, and sound.
