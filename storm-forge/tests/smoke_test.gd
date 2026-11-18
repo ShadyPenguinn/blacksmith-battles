@@ -141,8 +141,12 @@ func _run() -> void:
 
 	# Stomp bellows: jumping onto one heats the furnace; over-stomping burps.
 	main.lightning.next_in = 9999.0
+	main.furnace.stomp_log.clear()   # the pumping above mustn't make this landing burp
+	main.furnace.last_side = 0
 	var heat0 = main.furnace.heat
 	var bel = main.furnace.bellows[1]
+	var bel_anim = main.furnace._bellows_anim(bel)
+	check(bel_anim != null and bel_anim.has_animation("Stomp"), "the bellows use the giant model with its Stomp animation")
 	put(smelter, bel.global_position + Vector3(0, 0, 0))
 	smelter.global_position = bel.global_position + Vector3(0, 2.2, 0)
 	for i in 90:

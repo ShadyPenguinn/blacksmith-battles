@@ -276,35 +276,67 @@ func _seat(item: RigidBody3D) -> void:
 
 # --- Tool use ---
 
-## Furnace: two big accordion bellows, one each side, that smiths jump on.
+## Furnace: two big hinged bellows, one each side, nozzles into the fire, that smiths jump on.
+## Uses MODELS["bellows"] (its lid slams shut on "Stomp"); falls back to stacked boxes.
 func add_bellows() -> void:
 	var sz: Vector3 = SF.BELLOWS["size"]
 	for side in [-1, 1]:
 		var b = StaticBody3D.new()
 		b.collision_layer = 1
-		var cs = Build.box_shape(sz)
-		cs.position.y = sz.y * 0.5
-		b.add_child(cs)
 		var squish = Node3D.new()
 		squish.name = "Squish"
 		b.add_child(squish)
-		var leather = Color(0.42, 0.26, 0.16)
-		for i in 3:
-			var w = sz.x * (0.92 if i % 2 == 0 else 0.78)
-			var pleat = Build.box(Vector3(w, sz.y * 0.28, w), leather.darkened(0.12 * (i % 2)))
-			pleat.position.y = sz.y * (0.14 + 0.28 * i)
-			squish.add_child(pleat)
-		var top = Build.box(Vector3(sz.x * 1.05, 0.1, sz.z * 1.05), Color(0.55, 0.38, 0.2))
-		top.position.y = sz.y - 0.02
-		squish.add_child(top)
-		var nozzle = Build.box(Vector3(0.6, 0.16, 0.16), Color(0.35, 0.33, 0.32))
-		nozzle.position = Vector3(-side * (sz.x * 0.5 + 0.2), 0.25, 0)
-		b.add_child(nozzle)
+		var model = SF.fitted_model("bellows", sz)
+		if model:
+			model.position.y = sz.y * 0.5
+			# the model's nozzle points +X: turn the right-hand one to face the furnace
+			model.rotation.y = PI if side > 0 else 0.0
+			squish.add_child(model)
+		else:
+			var cs = Build.box_shape(sz)
+			cs.position.y = sz.y * 0.5
+			b.add_child(cs)
+			var leather = Color(0.42, 0.26, 0.16)
+			for i in 3:
+				var w = sz.x * (0.92 if i % 2 == 0 else 0.78)
+				var pleat = Build.box(Vector3(w, sz.y * 0.28, w), leather.darkened(0.12 * (i % 2)))
+				pleat.position.y = sz.y * (0.14 + 0.28 * i)
+				squish.add_child(pleat)
+			var top = Build.box(Vector3(sz.x * 1.05, 0.1, sz.z * 1.05), Color(0.55, 0.38, 0.2))
+			top.position.y = sz.y - 0.02
+			squish.add_child(top)
+			var nozzle = Build.box(Vector3(0.6, 0.16, 0.16), Color(0.35, 0.33, 0.32))
+			nozzle.position = Vector3(-side * (sz.x * 0.5 + 0.2), 0.25, 0)
+			b.add_child(nozzle)
 		b.set_meta("bellows", self)
 		b.set_meta("side", side)
 		add_child(b)
-		b.position = Vector3(side * (size.x * 0.5 + sz.x * 0.5 + 0.35), -size.y * 0.5, 0)
+		var gap = -SF.BELLOWS["nozzle_in"] if model else 0.35
+		b.position = Vector3(side * (size.x * 0.5 + sz.x * 0.5 + gap), -size.y * 0.5, 0)
+		if model:
+			_bellows_collision(b, model)
 		bellows.append(b)
+
+## Collision that follows the model: one convex hull per part, in the open pose (the lid is a
+## slope you land on). Built once; the lid's slam is only visual.
+func _bellows_collision(b: StaticBody3D, model: Node3D) -> void:
+	var inv = b.global_transform.affine_inverse()
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		# bake the model's scale into the points: physics doesn't like scaled shapes
+		var xf = inv * mi.global_transform
+		var pts = PackedVector3Array()
+		for v in mi.mesh.get_faces():
+			pts.append(xf * v)
+		var hull = ConvexPolygonShape3D.new()
+		hull.points = pts
+		var cs = CollisionShape3D.new()
+		cs.shape = hull
+		b.add_child(cs)
+
+## The model's AnimationPlayer, if the bellows has one.
+func _bellows_anim(b: Node3D) -> AnimationPlayer:
+	var found = b.find_children("*", "AnimationPlayer", true, false)
+	return found[0] if not found.is_empty() else null
 
 ## Someone landed on a bellows. power ~1 for a normal jump, more for a belly flop.
 ## Host side. Alternating sides pumps best; stomping too fast makes the furnace burp.
@@ -332,10 +364,20 @@ func stomp(side: int, power: float) -> void:
 func squish(side: int) -> void:
 	var b = bellows[0] if side < 0 else bellows[1]
 	var sq = b.get_node("Squish")
-	var tw = create_tween()
-	tw.tween_property(sq, "scale", Vector3(1.12, 0.45, 1.12), 0.06)
-	tw.tween_property(sq, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var anim = _bellows_anim(b)
+	if anim and anim.has_animation("Stomp"):
+		anim.stop()
+		anim.play("Stomp")   # the lid slams shut and springs back open
+		var tw = create_tween()   # plus a little squash of the whole thing
+		tw.tween_property(sq, "scale", Vector3(1.04, 0.9, 1.04), 0.05)
+		tw.tween_property(sq, "scale", Vector3.ONE, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	else:
+		var tw = create_tween()
+		tw.tween_property(sq, "scale", Vector3(1.12, 0.45, 1.12), 0.06)
+		tw.tween_property(sq, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	var noz = b.global_position + Vector3(-side * (SF.BELLOWS["size"].x * 0.5 + 0.4), 0.25, 0)
+	if anim:   # the model's nozzle is tucked into the furnace: puff where it goes in
+		noz = b.global_position + Vector3(-side * (SF.BELLOWS["size"].x * 0.5 - SF.BELLOWS["nozzle_in"] - 0.05), 0.3, 0)
 	Fx.burst(main, noz, Color(0.95, 0.95, 0.9, 0.7), 8, 1.2, 4.0, 0.5, 0.35, Vector3(-side, 0.2, 0), 25.0)
 	if mouth:
 		Fx.burst(main, mouth.global_position + Vector3(0, 0.2, 0.15), Color(1.0, 0.55, 0.15), 10, 1.0, 3.0, 3.0, 0.45, Vector3(0, 1, 0.6), 40.0)

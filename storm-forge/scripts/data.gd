@@ -56,7 +56,8 @@ const AREA_STEP := 27.0           # each new area sits this far past the last on
 const HEAT_PER_PUMP := 9.0
 ## Stomp bellows: jump on the accordions either side of the furnace to blow air in.
 const BELLOWS := {
-	"size": Vector3(1.3, 0.6, 1.3),
+	"size": Vector3(2.4, 0.8, 1.2),  # the model (MODELS["bellows"]) is fitted to this box
+	"nozzle_in": 0.3,         # the nozzle tip pokes this far into the furnace's side
 	"heat": 11.0,             # heat per stomp (a belly flop counts 1.5x)
 	"min_fall": 3.5,          # you have to land on it (walking on doesn't pump)
 	"boing": 2.5,             # it springs you back up a little
@@ -170,6 +171,7 @@ const MODELS := {
 	"ore_chunk": M + "resources/Copper_Nugget_Large.gltf",
 	"ore_node": M + "dungeon/rocks.gltf",
 	"furnace": "",
+	"bellows": M + "stations/bellows_giant.glb",  # nozzle +X, lid hinged at the nozzle, "Stomp" anim
 	"anvil": M + "tools/anvil.gltf",
 	"grindstone": M + "tools/grindstone.gltf",
 	"trough": "",
