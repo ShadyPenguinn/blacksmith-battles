@@ -41,11 +41,11 @@ func _run() -> void:
 	blank.quenched = true
 	for i in 3:
 		main.spawn_item("ore", Vector3(-6.5 + i * 0.7, 0.5, 1.0), {"ore": "copper"})
-	var ore = main.spawn_item("ore", miner.hand_position(), {"ore": "copper"})
-	miner.drop()
-	miner.pick_up(ore)
-	main.set_controlled(2)
+	for i in 2:
+		miner.pick_up(main.spawn_item("ore", miner.hand_position(), {"ore": "copper"}))
+	main.set_controlled(0)
 	main.time_left = 95.0
+	main.lightning.next_in = 9999.0
 	await frames(90)
 	main.lightning.begin_warning(miner)
 	main.lightning.warn_t = 1000.0  # hold the warning ring on screen

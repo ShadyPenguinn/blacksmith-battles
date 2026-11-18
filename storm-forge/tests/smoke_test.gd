@@ -48,16 +48,41 @@ func _run() -> void:
 	var ores = items_of("ore")
 	check(ores.size() == 1, "three pickaxe hits drop an ore chunk")
 
-	# Swap pickaxe for ore, carry to the furnace.
-	main.interact(miner)  # drops pickaxe
+	# Pocket the ore (pickaxe stays in hand), carry it to the furnace.
 	put(miner, ores[0].global_position)
 	await frames(2)
 	main.interact(miner)
-	check(miner.held != null and miner.held.kind == "ore", "miner picks up the ore")
+	check(miner.slots[1] == ores[0] and miner.held.tool == "pickaxe", "miner pockets the ore and keeps the pickaxe in hand")
 	put(miner, main.furnace.global_position + Vector3(0, 0, 2.0))
 	await frames(2)
 	main.interact(miner)
-	check(main.furnace.contents.get("copper", 0) == 1, "ore goes into the furnace")
+	check(main.furnace.contents.get("copper", 0) == 1 and miner.slots[1] == null, "E at the furnace empties the ore from your pockets")
+
+	# Hotbar: three pockets, one tool, scroll to switch.
+	var spare = []
+	for i in 4:
+		spare.append(main.spawn_item("ore", Vector3(-6, 0.5, 5), {"ore": "copper"}))
+	put(miner, Vector3(-6, 0, 5))
+	await frames(2)
+	for i in 3:
+		main.interact(miner)
+	check(miner.items().size() == 4, "a tool plus three pockets of ore")
+	check(main.interact(miner) == "Pockets full", "a fourth chunk doesn't fit")
+	main.do_action(miner, "slot_next", {})
+	check(miner.held != null and miner.held.kind == "ore", "scrolling selects the next slot")
+	main.do_action(miner, "slot_1", {})
+	check(miner.held.tool == "pickaxe", "1 goes back to the tool slot")
+	var hammer_spot = main.spawn_item("tool", Vector3(-6, 0.5, 5), {"tool": "hammer"})
+	main.do_action(miner, "slot_2", {})
+	for it in spare:
+		if it.is_free():
+			main.despawn(it)
+	check(main.interact(miner).begins_with("One tool"), "can't carry a second tool")
+	main.despawn(hammer_spot)
+	for it in miner.items():
+		if it.kind == "ore":
+			main.despawn(it)
+	main.do_action(miner, "slot_1", {})
 
 	# Smelt: pump to keep heat in the band until an ingot pops out.
 	put(smelter, main.furnace.global_position + Vector3(1.5, 0, 1.5))
@@ -97,7 +122,6 @@ func _run() -> void:
 	await frames(2)
 	main.use(finisher)
 	check(finisher.held.bucket_full, "bucket fills at the trough")
-	smith.drop()
 	put(smith, blanks[0].global_position)
 	await frames(2)
 	smith.pick_up(blanks[0])
@@ -117,7 +141,6 @@ func _run() -> void:
 	check(weapons.size() == 1 and weapons[0].tier == 0, "grinding finishes a copper sword")
 
 	# Swing at the door until it breaks (copper vs copper door).
-	smith.drop()
 	put(smith, weapons[0].global_position)
 	await frames(2)
 	smith.pick_up(weapons[0])
@@ -182,8 +205,10 @@ func _run() -> void:
 	# Revive with a full bucket. (The roll may have swapped tools, so hand it back.)
 	var bucket = items_of("tool").filter(func(i): return i.tool == "bucket")[0]
 	if bucket.holder:
-		bucket.holder.held = null
-	finisher.drop()
+		bucket.holder.take(bucket)
+	if finisher.slots[0]:
+		finisher.drop_item(finisher.slots[0])
+	finisher.select(0)
 	finisher.pick_up(bucket)
 	finisher.held.bucket_full = true
 	miner.stun = 2.0

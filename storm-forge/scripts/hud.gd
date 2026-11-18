@@ -2,7 +2,7 @@ extends CanvasLayer
 ## On-screen text: timer, door, buffs and debuffs, hints, toasts, the slot-machine roll.
 
 var main: Node
-const CONTROLS := "WASD move   Shift sprint   Space dive   E / right-click grab, place, drop   F / click use   Q throw   1-4 switch smith   L call lightning   N skip door"
+const CONTROLS := "WASD move   Shift sprint   Space dive   E / right-click grab, place, drop   F / click use   Q throw   1-4 / wheel pick slot   Tab switch smith   L call lightning   N skip door"
 var top_left: Label
 var top_right: Label
 var bottom: Label
@@ -19,6 +19,9 @@ var roll_t = -1.0
 var roll_buff: Dictionary
 var roll_debuff: Dictionary
 var menu: PanelContainer
+var hotbar: Array = []     # [panel, label] per slot
+var slot_style: StyleBoxFlat
+var slot_style_sel: StyleBoxFlat
 var menu_box: VBoxContainer
 
 func setup(p_main: Node) -> void:
@@ -50,6 +53,27 @@ func setup(p_main: Node) -> void:
 	action_label = _label(Vector2(0, 0), 26)
 	action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_place(action_label, 0.5, 1.0, -400, -160, 800, 40)
+
+	slot_style = StyleBoxFlat.new()
+	slot_style.bg_color = Color(0, 0, 0, 0.5)
+	slot_style.set_border_width_all(2)
+	slot_style.border_color = Color(1, 1, 1, 0.25)
+	slot_style.set_corner_radius_all(6)
+	slot_style_sel = slot_style.duplicate()
+	slot_style_sel.bg_color = Color(0.25, 0.2, 0.1, 0.8)
+	slot_style_sel.border_color = Color(1.0, 0.8, 0.3)
+	slot_style_sel.set_border_width_all(4)
+	for i in SF.SLOTS:
+		var panel = PanelContainer.new()
+		_place(panel, 0.5, 1.0, -330 + i * 166, -118, 158, 64)
+		var l = Label.new()
+		l.add_theme_font_size_override("font_size", 17)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+		panel.add_child(l)
+		add_child(panel)
+		hotbar.append([panel, l])
 
 	big = PanelContainer.new()
 	_place(big, 0.5, 0.5, -380, -130, 760, 260)
@@ -174,8 +198,14 @@ func refresh() -> void:
 		return
 	var p = main.players[main.controlled]
 	bottom.text = "You: %s   %s" % [p.role["name"], main.hint(p)]
+	for i in hotbar.size():
+		var it = p.slots[i] if i < p.slots.size() else null
+		var name = it.display_name() if it and is_instance_valid(it) else ("tool" if i == 0 else "-")
+		hotbar[i][1].text = "%d  %s" % [i + 1, name]
+		hotbar[i][1].modulate.a = 1.0 if it else 0.5
+		hotbar[i][0].add_theme_stylebox_override("panel", slot_style_sel if i == p.sel else slot_style)
 	if main.is_online():
-		controls.text = CONTROLS.replace("   1-4 switch smith", "")
+		controls.text = CONTROLS.replace("   Tab switch smith", "")
 	toast_t = maxf(0.0, toast_t - dt)
 	toast_label.modulate.a = clampf(toast_t, 0.0, 1.0)
 	action_t = maxf(0.0, action_t - dt)

@@ -6,7 +6,15 @@ extends CharacterBody3D
 var main: Node
 var idx = 0
 var role: Dictionary
-var held: RigidBody3D = null
+## Hotbar. Slot 0 holds your one tool; slots 1-3 hold anything that isn't a tool.
+## held is whatever's in the selected slot: that's what F uses and Q throws.
+var slots: Array = []
+var sel = 0
+var held: RigidBody3D:
+	get:
+		return slots[sel] if sel < slots.size() else null
+	set(v):
+		slots[sel] = v
 var controlled = false
 var stun = 0.0
 var burn = 0.0            # holding a hot ingot bare-handed
@@ -31,6 +39,7 @@ func setup(p_main: Node, p_idx: int) -> void:
 	main = p_main
 	idx = p_idx
 	role = SF.ROLES[idx]
+	slots.resize(SF.SLOTS)
 	add_to_group("player")
 	collision_layer = 4
 	collision_mask = 1
@@ -69,12 +78,61 @@ func set_big_head(scale_factor: float) -> void:
 		head.position.y = 0.75 + 0.22 * (scale_factor - 1.0)
 
 func metal_count() -> int:
-	if held == null:
-		return 0
-	var n = 1 if held.is_metal() else 0
-	if held.tongs_load:
-		n += 1
+	var n = 0
+	for it in items():
+		if it.is_metal():
+			n += 1
+		if it.tongs_load:
+			n += 1
 	return n
+
+## Everything you carry, selected or not.
+func items() -> Array:
+	return slots.filter(func(it): return it != null and is_instance_valid(it))
+
+func heavy_count() -> int:
+	var n = 0
+	for it in items():
+		if it.is_heavy() or (it.tongs_load and it.tongs_load.is_heavy()):
+			n += 1
+	return n
+
+## Which slot an item would go in, or -1 if there's no room. Tools only fit slot 0.
+func slot_for(item: RigidBody3D) -> int:
+	if item.kind == "tool":
+		return 0 if slots[0] == null else -1
+	if sel > 0 and slots[sel] == null:
+		return sel
+	for i in range(1, slots.size()):
+		if slots[i] == null:
+			return i
+	return -1
+
+## The slot an item would need: 0 for a tool, else the selected pocket (or slot 1).
+func blocking_slot(item: RigidBody3D) -> int:
+	if item.kind == "tool":
+		return 0
+	return sel if sel > 0 else 1
+
+func select(i: int) -> void:
+	sel = clampi(i, 0, slots.size() - 1)
+	burn = 0.0
+
+func cycle(step: int) -> void:
+	select(posmod(sel + step, slots.size()))
+
+## Take an item out of whichever slot it's in, without dropping it.
+func take(it: RigidBody3D) -> void:
+	var i = slots.find(it)
+	if i >= 0:
+		slots[i] = null
+	if it and it.holder == self:
+		it.holder = null
+
+func clear_slots() -> void:
+	for i in slots.size():
+		slots[i] = null
+	sel = 0
 
 func hand_position() -> Vector3:
 	return global_position + Vector3(0, 1.1, 0) + facing * 0.65
@@ -116,8 +174,10 @@ func _physics_process(delta: float) -> void:
 		visual.rotation.y = atan2(-facing.x, -facing.z)
 
 	var speed = SF.MOVE_SPEED * (SF.SPRINT_MULT if sprint else 1.0)
-	if held and (held.is_heavy() or (held.tongs_load and held.tongs_load.is_heavy())):
-		speed *= SF.CARRY_SLOW if main.mod("featherweight") == 0 else 0.9
+	var heavy = heavy_count()
+	if heavy > 0:
+		var slow = SF.CARRY_SLOW - SF.CARRY_SLOW_EXTRA * (heavy - 1)
+		speed *= slow if main.mod("featherweight") == 0 else 0.9
 	if dive_t > 0.0:
 		dive_t -= delta
 		velocity.x = dive_dir.x * SF.DIVE_SPEED
@@ -138,38 +198,65 @@ func _physics_process(delta: float) -> void:
 				main.toast(role["name"] + " fumbled!")
 				drop(facing * 2.0 + Vector3.UP * 2.0)
 
+## Selected item in hand, the rest stacked on your back where friends can see them.
 func _update_held(delta: float) -> void:
-	if held == null or not is_instance_valid(held):
-		held = null
-		return
-	held.global_position = hand_position()
-	held.global_rotation = Vector3(0, visual.rotation.y, 0)
-	if held.tongs_load and is_instance_valid(held.tongs_load):
-		held.tongs_load.global_position = hand_position() + facing * 0.55
-		held.tongs_load.global_rotation = held.global_rotation
-	# Bare hands on a hot ingot: ow.
-	if held.kind == "ingot" and held.hot > 0.0:
+	for i in slots.size():
+		if slots[i] != null and not is_instance_valid(slots[i]):
+			slots[i] = null
+	var back = 0
+	var yaw = Vector3(0, visual.rotation.y, 0)
+	for i in slots.size():
+		var it = slots[i]
+		if it == null:
+			continue
+		if i == sel:
+			it.global_position = hand_position()
+		else:
+			it.global_position = global_position + Vector3(0, 0.9 + 0.38 * back, 0) - facing * 0.5
+			back += 1
+		it.global_rotation = yaw
+		if it.tongs_load and is_instance_valid(it.tongs_load):
+			it.tongs_load.global_position = it.global_position + facing * 0.55
+			it.tongs_load.global_rotation = yaw
+	# Bare hands (or pockets) on a hot ingot: ow.
+	var hot_one = null
+	for it in items():
+		if it.kind == "ingot" and it.hot > 0.0:
+			hot_one = it
+	if hot_one:
 		burn += delta
 		if burn >= SF.BURN_TIME:
 			burn = 0.0
 			main.toast("Ow, hot! Use the tongs.")
-			drop(facing * 1.5 + Vector3.UP * 1.5)
+			drop_item(hot_one, facing * 1.5 + Vector3.UP * 1.5)
 	else:
 		burn = 0.0
 
-func pick_up(item: RigidBody3D) -> void:
+## Put an item in its slot. Returns false if there's no room for it.
+func pick_up(item: RigidBody3D) -> bool:
+	var i = slot_for(item)
+	if i < 0:
+		return false
 	if item.station:
 		item.station.clear_slot(item)
 		item.station = null
+	var hands_empty = held == null
 	item.holder = self
 	item.attach()
-	held = item
+	slots[i] = item
+	# Grab into empty hands, and always draw a sword so you can swing it.
+	if hands_empty or item.kind == "weapon":
+		select(i)
+	return true
 
+## Drop what's in your hand.
 func drop(impulse: Vector3 = Vector3.ZERO) -> RigidBody3D:
 	if held == null:
 		return null
-	var it = held
-	held = null
+	return drop_item(held, impulse)
+
+func drop_item(it: RigidBody3D, impulse: Vector3 = Vector3.ZERO) -> RigidBody3D:
+	take(it)
 	if it.tongs_load:
 		var gripped = it.tongs_load
 		it.tongs_load = null
@@ -181,17 +268,17 @@ func zap() -> void:
 	var stun_time = SF.STUN_TIME * (0.5 ** main.mod("second_wind"))
 	stun = stun_time
 	velocity = Vector3(randf_range(-4, 4), 7.0, randf_range(-4, 4))
-	var it = held
-	if it:
+	# Everything you carry goes flying.
+	for it in items():
 		var fling = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * randf_range(5.0, 8.0) + Vector3.UP * 6.0
-		drop(fling)
+		drop_item(it, fling)
 		if it.kind == "tool":
 			lost_tool = it
 
 func _recover() -> void:
 	stun = 0.0
 	visual.rotation = Vector3(0, atan2(-facing.x, -facing.z), 0)
-	if lost_tool and is_instance_valid(lost_tool) and main.mod("magnet") > 0 and lost_tool.is_free() and held == null:
+	if lost_tool and is_instance_valid(lost_tool) and main.mod("magnet") > 0 and lost_tool.is_free() and slots[0] == null:
 		pick_up(lost_tool)
 		main.toast("Magnet Gloves: tool snapped back")
 	lost_tool = null

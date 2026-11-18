@@ -10,7 +10,7 @@ It uses Jolt physics, which is built into Godot.
 
 The menu offers three choices:
 
-- **Play offline**: you control one smith at a time. Press 1-4 to jump between them and run the whole pipeline yourself.
+- **Play offline**: you control one smith at a time. Press Tab to jump between them and run the whole pipeline yourself.
 - **Host a game**: wait in the lobby for friends, then press Start. Each player gets one smith in join order (host = Miner, then Smelter, Smith, Finisher). Smiths nobody plays leave their tool on the floor for anyone to pick up.
 - **Join**: type the host's IP address and press Join.
 
@@ -23,18 +23,23 @@ Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2`
 | WASD or arrows | Move |
 | Shift | Sprint |
 | Space | Dive (dodge lightning) |
-| E or right-click | Grab, place on a station, grip with tongs, or drop |
+| E or right-click | Grab into your hotbar, put things on a station (from your hand or pockets), grip with tongs, or drop |
 | F or left-click | Use what you hold |
 | Q | Throw what you hold |
-| 1-4 | Switch smith: Miner, Smelter, Smith, Finisher |
+| 1-4 or mouse wheel | Pick a hotbar slot |
+| Tab | Offline: switch smith (Miner, Smelter, Smith, Finisher) |
 | L | Debug: call lightning on yourself |
 | N | Debug: skip to the next door |
 | R | Restart after the run ends |
 
+## Hotbar
+
+Every smith has 4 slots. Slot 1 holds your one tool, and you can never carry two tools. Slots 2-4 hold anything else, like 3 chunks of ore. The selected slot is what's in your hand: F uses it and Q throws it. Everything else rides on your back where friends can see it. Each extra heavy thing slows you a bit more, all of it raises your lightning odds, and a strike flings the lot. Press E at the furnace to dump all your ore in at once.
+
 ## The loop
 
 1. **Miner** hits an ore node 3 times with the pickaxe. A chunk pops out.
-2. Anyone carries ore to the **furnace** (E). Hauling slows you down.
+2. Press E by the chunk to pocket it (the pickaxe stays in hand), then E at the **furnace** to put it in. Hauling slows you down.
 3. **Smelter** uses the tongs at the furnace to pump the bellows. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag.
 4. The hot ingot pops out. Grab it with the tongs (E) and put it on the **anvil** (E). Bare hands burn and you drop it.
 5. **Smith** hits the anvil with the hammer (F) when the O is in the `===` zone. 4 hits makes a blade, 3 misses makes scrap.

@@ -118,7 +118,8 @@ func _setup_input() -> void:
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"sprint": [KEY_SHIFT], "dive": [KEY_SPACE], "interact": [KEY_E],
 		"use": [KEY_F, KEY_J], "throw": [KEY_Q], "restart": [KEY_R],
-		"smith_1": [KEY_1], "smith_2": [KEY_2], "smith_3": [KEY_3], "smith_4": [KEY_4],
+		"slot_1": [KEY_1], "slot_2": [KEY_2], "slot_3": [KEY_3], "slot_4": [KEY_4],
+		"next_smith": [KEY_TAB],
 		"debug_strike": [KEY_L], "debug_skip": [KEY_N],
 	}
 	for action in keys:
@@ -134,6 +135,12 @@ func _setup_input() -> void:
 	var mb2 = InputEventMouseButton.new()
 	mb2.button_index = MOUSE_BUTTON_RIGHT
 	InputMap.action_add_event("interact", mb2)
+	for pair in [["slot_prev", MOUSE_BUTTON_WHEEL_UP], ["slot_next", MOUSE_BUTTON_WHEEL_DOWN]]:
+		if not InputMap.has_action(pair[0]):
+			InputMap.add_action(pair[0])
+		var wheel = InputEventMouseButton.new()
+		wheel.button_index = pair[1]
+		InputMap.action_add_event(pair[0], wheel)
 
 func _build_world() -> void:
 	env = Environment.new()
@@ -261,7 +268,7 @@ func start_run(n: int = -1) -> void:
 		t.owner_idx = i
 		if i < players.size():
 			var p = players[i]
-			p.held = null
+			p.clear_slots()
 			p.stun = 0.0
 			p.set_big_head(1.0)
 			p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
@@ -355,12 +362,11 @@ func _finish_roll(buff: Dictionary, debuff: Dictionary) -> void:
 func _role_swap() -> void:
 	var tools = []
 	for p in players:
-		tools.append(p.held if p.held and p.held.kind == "tool" else null)
+		tools.append(p.slots[0])
 	for i in players.size():
 		var incoming = tools[(i - 1 + players.size()) % players.size()]
 		var p = players[i]
-		if p.held and p.held.kind == "tool":
-			p.held = null
+		p.slots[0] = null
 		if incoming:
 			incoming.holder = null
 			p.pick_up(incoming)
@@ -418,17 +424,16 @@ func _storm_progress() -> float:
 
 ## Local keyboard for the smith you control (host or offline).
 func _handle_input() -> void:
-	if not is_online():
-		for i in players.size():
-			if Input.is_action_just_pressed("smith_%d" % (i + 1)):
-				set_controlled(i)
+	if not is_online() and Input.is_action_just_pressed("next_smith"):
+		set_controlled((controlled + 1) % players.size())
 	var p = players[controlled]
 	p.in_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	p.in_sprint = Input.is_action_pressed("sprint")
 	for a in _pressed_actions():
 		do_action(p, a, {})
 
-const ACTIONS := ["interact", "use", "throw", "dive", "debug_strike", "debug_skip"]
+const ACTIONS := ["interact", "use", "throw", "dive", "debug_strike", "debug_skip",
+	"slot_1", "slot_2", "slot_3", "slot_4", "slot_prev", "slot_next"]
 
 func _pressed_actions() -> Array:
 	var out = []
@@ -457,6 +462,12 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 		return
 	if action_name == "dive":
 		p.in_dive = true
+		return
+	if action_name.begins_with("slot_"):
+		match action_name:
+			"slot_prev": p.cycle(-1)
+			"slot_next": p.cycle(1)
+			_: p.select(int(action_name.substr(5)) - 1)
 		return
 	if p.stun > 0.0:
 		return
@@ -525,8 +536,8 @@ func spawn_item(kind: String, pos: Vector3, opts: Dictionary = {}) -> RigidBody3
 func despawn(it: RigidBody3D) -> void:
 	if not is_instance_valid(it):
 		return
-	if it.holder and it.holder.held == it:
-		it.holder.held = null
+	if it.holder:
+		it.holder.take(it)
 	if it.gripped_by and it.gripped_by.tongs_load == it:
 		it.gripped_by.tongs_load = null
 	if it.tongs_load:
@@ -596,16 +607,10 @@ func can_accept(st: Node3D, it: RigidBody3D) -> bool:
 		"grindstone": return st.slot == null and it.kind == "blank"
 	return false
 
-## E: pick up, place, grip with tongs, or drop.
+## E: place on a station (from your hand or pockets), pick up, grip with tongs, or drop.
 func interact(p) -> String:
 	var h: RigidBody3D = p.held
-	if h == null:
-		var it = nearest_item(p)
-		if it == null:
-			return _say(p, "Nothing to grab")
-		p.pick_up(it)
-		return _say(p, "Picked up " + it.display_name())
-	if h.kind == "tool" and h.tool == "tongs":
+	if h and h.kind == "tool" and h.tool == "tongs":
 		if h.tongs_load:
 			var load_item = h.tongs_load
 			var st = nearest_station(p, ["anvil", "grindstone", "furnace"])
@@ -617,7 +622,7 @@ func interact(p) -> String:
 			h.tongs_load = null
 			load_item.release(p.facing * 1.5 + Vector3.UP * 1.0)
 			return _say(p, "Set it down")
-		var grab = nearest_item(p, ["ingot", "blank", "scrap", "ore"])
+		var grab = nearest_item(p, ["ingot", "blank"])
 		if grab:
 			if grab.station:
 				grab.station.clear_slot(grab)
@@ -626,12 +631,38 @@ func interact(p) -> String:
 			grab.gripped_by = h
 			grab.attach()
 			return _say(p, "Tongs grip " + grab.display_name())
+	# At a station: put in what fits, the thing in your hand first. The furnace takes it all.
 	var st2 = nearest_station(p, ["anvil", "grindstone", "furnace"])
-	if st2 and can_accept(st2, h):
-		p.held = null
-		h.holder = null
-		st2.accept(h)
-		return _say(p, "Put it in the " + st2.kind)
+	if st2:
+		var order = p.items()
+		if h:
+			order.erase(h)
+			order.push_front(h)
+		var placed = []
+		for it in order:
+			if can_accept(st2, it):
+				p.take(it)
+				st2.accept(it)
+				placed.append(it.display_name())
+				if st2.kind != "furnace":
+					break
+		if not placed.is_empty():
+			return _say(p, "Put %s in the %s" % [", ".join(placed), st2.kind])
+	var near = nearest_item(p)
+	if near:
+		if p.pick_up(near):
+			return _say(p, "Picked up " + near.display_name())
+		# No room: swap if the full slot is the one in your hand.
+		var blocked = p.blocking_slot(near)
+		if blocked == p.sel and h:
+			p.drop(p.facing * 1.5 + Vector3.UP * 1.0)
+			p.pick_up(near)
+			return _say(p, "Swapped for " + near.display_name())
+		if near.kind == "tool":
+			return _say(p, "One tool at a time. Select it and press E to swap.")
+		return _say(p, "Pockets full")
+	if h == null:
+		return _say(p, "Nothing to grab")
 	p.drop(p.facing * 1.5 + Vector3.UP * 1.0)
 	return _say(p, "Dropped " + h.display_name())
 
@@ -696,8 +727,6 @@ func _say(p, msg: String) -> String:
 ## One-line hint for what E and F do right now.
 func hint(p) -> String:
 	var parts = []
-	var h: RigidBody3D = p.held
-	parts.append("Holding: " + (h.display_name() if h else "nothing"))
 	var near = nearest_station(p, ["node", "furnace", "anvil", "grindstone", "trough"])
 	if near:
 		parts.append("Near: " + (near.ore.capitalize() + " node" if near.kind == "node" else near.kind.capitalize()))
@@ -711,7 +740,7 @@ func hint(p) -> String:
 func make_snapshot() -> Dictionary:
 	var ps = []
 	for p in players:
-		ps.append([p.global_position, p.visual.rotation, p.stun, p.held.net_id if p.held else 0, p.facing])
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel])
 	var its = {}
 	for it in get_tree().get_nodes_in_group("item"):
 		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
@@ -789,8 +818,11 @@ func apply_snapshot(s: Dictionary) -> void:
 		p.net_pos = d[0]
 		p.net_rot = d[1]
 		p.stun = d[2]
-		p.held = items_by_id.get(d[3]) if d[3] != 0 else null
+		for k in p.slots.size():
+			var sid: int = d[3][k]
+			p.slots[k] = items_by_id.get(sid) if sid != 0 else null
 		p.facing = d[4]
+		p.sel = d[5]
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	var nodes: Array = s["n"]

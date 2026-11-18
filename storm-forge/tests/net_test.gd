@@ -76,6 +76,10 @@ func _client() -> void:
 	check(me.held != null and me.held.tool == "tongs", "client sees its own tongs in hand")
 	check(main.items_by_id.size() == 4, "client sees all four tools")
 	check(main.area_nodes.size() > 0, "client built the ore nodes")
+	main.net.send_action("slot_next", {})
+	check(await wait_until(func(): return me.sel == 1 and me.held == null, 5.0), "client's scroll changes its hotbar slot")
+	main.net.send_action("slot_1", {})
+	check(await wait_until(func(): return me.sel == 0 and me.held != null, 5.0), "client switches back to its tool")
 	await wait(1.0)
 	for i in 6:
 		main.net.send_action("use", {})
