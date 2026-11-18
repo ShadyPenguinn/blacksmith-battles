@@ -22,7 +22,7 @@ Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2`
 | --- | --- |
 | WASD or arrows | Move |
 | Shift | Sprint |
-| Space | Dive (dodge lightning) |
+| Space | Jump. Press again in the air to belly flop (dodge lightning) |
 | E or right-click | Grab into your hotbar, put things on a station (from your hand or pockets), grip with tongs, or drop |
 | F or left-click | Use what you hold |
 | Q | Throw what you hold |
@@ -63,7 +63,7 @@ The smiths, tools, anvil, grindstone, ore rocks, ore chunks, bars and swords are
 
 Every model path is in `SF.MODELS` in `scripts/data.gd`. An entry is a path, or `{"path", "rot"}` to turn the model first. Each model is scaled to fit its collision box, and an empty entry keeps the placeholder. Animation clip choices are in `SF.ANIM_WORDS` and `SF.ACTION_ANIMS`, and the camera distance is `SF.CAM_OFFSET`. Copy more models from the full collection into `assets/models/` and point a key at them. `assets/kaykit/` is git-ignored if you want a local scratch folder.
 
-The run is made goofy in code on top of the KayKit clip: each step hops, squashes and waddles, the body leans in, the arms are flung out to the sides and flap, and the head wobbles. Every knob is in `SF.GOOFY` in `scripts/data.gd` (the arm and head part is `scripts/goofy.gd`). `tests/runframes.gd` saves frames of a smith sprinting past the camera to judge it (`-- /some/folder 8 side` or `front`, add `--empty` for no tool).
+The run is made goofy in code on top of the KayKit clip: each step hops, squashes and waddles, the body leans in, the arms are flung out to the sides and flap, and the head wobbles. Every knob is in `SF.GOOFY` in `scripts/data.gd` (the arm and head part is `scripts/goofy.gd`). Movement feel (momentum, skids, the floaty jump and the belly flop) is tuned in `SF.MOVE`, and `tests/moveframes.gd` renders a run, skid, jump and flop routine. `tests/runframes.gd` saves frames of a smith sprinting past the camera to judge it (`-- /some/folder 8 side` or `front`, add `--empty` for no tool).
 
 `tests/closeup.gd` renders close-up frames of a smith idling, walking, mining and getting struck:
 

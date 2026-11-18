@@ -21,6 +21,18 @@ var burn = 0.0            # holding a hot ingot bare-handed
 var dive_t = 0.0
 var dive_cd = 0.0
 var dive_dir = Vector3.ZERO
+var flop = false                    # belly flop in progress (jump, then jump again)
+var flop_slide = 0.0
+var jumped = false
+var coyote_t = 0.0
+var jump_buf = 0.0
+var land_sq = 0.0                   # extra squash (+) or stretch (-) from jumps and landings
+var skidding = false
+var skid_t = 0.0
+var vis_yaw = 0.0
+var turn_speed = 0.0                # how fast the body is turning, for banking
+var net_air = false                 # client copy of "in the air"
+var was_air = false
 var facing = Vector3(0, 0, -1)
 var lost_tool: RigidBody3D = null   # for Magnet Gloves
 var butter_t = 0.0
@@ -224,13 +236,15 @@ func _animate(delta: float) -> void:
 			anim_state = "act"
 	if act_t > 0.0 and stun <= 0.0:
 		act_t -= delta
-		if act_t > 0.0 and dive_t <= 0.0:
+		if act_t > 0.0 and not flop:
 			return
 	var state = "idle"
 	if stun > 0.0:
 		state = "stun"
-	elif dive_t > 0.0:
-		state = "dive"
+	elif flop:
+		state = "flop"
+	elif airborne():
+		state = "air"
 	elif moved > SF.MOVE_SPEED * 1.15:
 		state = "run"
 	elif moved > 0.4:
@@ -239,28 +253,91 @@ func _animate(delta: float) -> void:
 		state = "walk" if state == "run" and anim_names.has("walk") else "idle"
 	if state != anim_state and anim_names.has(state):
 		anim_state = state
-		anim.play(anim_names[state], 0.15, SF.GOOFY["clip_speed"] if state in ["walk", "run"] else 1.0)
+		anim.play(anim_names[state], 0.12, SF.GOOFY["clip_speed"] if state in ["walk", "run"] else 1.0)
 
-## Bounce, waddle, lean and squash while moving; arms and head go to goofy.gd.
+## In the air? The host knows from physics; clients get it in the snapshot.
+func airborne() -> bool:
+	return net_air if puppet else not is_on_floor()
+
+## Bounce, waddle, lean, bank and squash; arms and head go to goofy.gd.
 func _goof(delta: float, moved: float) -> void:
 	var g: Dictionary = SF.GOOFY
+	var air = airborne()
+	if puppet and was_air and not air:
+		land_sq = 0.3
+		puff(6, 1.0)
+	was_air = air
 	var want = 0.0
-	if stun <= 0.0 and dive_t <= 0.0 and act_t <= 0.0 and moved > 0.4:
-		want = clampf(moved / SF.MOVE_SPEED, 0.0, 1.3)
+	if stun <= 0.0 and act_t <= 0.0 and (moved > 0.4 or air or flop):
+		want = 1.0 if (air or flop) else clampf(moved / SF.MOVE_SPEED, 0.0, 1.3)
 	goof = move_toward(goof, want, delta * 6.0)
-	step_phase += moved * delta * g["steps_per_meter"]
+	var before = floorf(step_phase)
+	if not air and not flop:
+		step_phase += moved * delta * g["steps_per_meter"]
+		if floorf(step_phase) != before and moved > SF.MOVE_SPEED * 1.15:
+			puff(2, 0.5)
+	land_sq = move_toward(land_sq, 0.0, delta * 2.5)
 	if goofy:
 		goofy.amount = minf(goof, 1.0)
-		goofy.phase = step_phase
-	if stun > 0.0 or (dive_t > 0.0 and not has_model):
+		# In the air the arms flap fast like little wings; in a flop they spread wide.
+		goofy.phase = step_phase if not air else goofy.phase + delta * (2.0 if flop else 7.0)
+	if stun > 0.0:
 		return
-	var bounce = absf(sin(step_phase * PI))        # 0 at each footfall, 1 mid-air
+	var bounce = 0.0 if (air or flop) else absf(sin(step_phase * PI))   # 0 at each footfall
 	visual.position.y = 0.85 + bounce * g["hop"] * goof
-	var sq = (bounce - 0.5) * 2.0 * g["squash"] * goof   # stretch up high, squash on landing
+	var sq = (bounce - 0.5) * 2.0 * g["squash"] * goof * (0.0 if air else 1.0) - land_sq
+	if air and not flop:
+		sq += clampf(velocity.y / 30.0, -0.1, 0.15)   # stretch going up
 	visual.scale = Vector3(1.0 - sq * 0.5, 1.0 + sq, 1.0 - sq * 0.5)
-	visual.rotation.z = sin(step_phase * PI) * deg_to_rad(g["waddle_deg"]) * goof
-	if has_model or dive_t <= 0.0:
-		visual.rotation.x = -deg_to_rad(g["lean_deg"]) * minf(goof, 1.0)
+	if puppet:
+		return
+	var bank = clampf(-turn_speed * g["bank"], -0.5, 0.5)
+	visual.rotation.z = sin(step_phase * PI) * deg_to_rad(g["waddle_deg"]) * goof * (0.0 if air else 1.0) + bank
+	var pitch = -deg_to_rad(g["lean_deg"]) * minf(goof, 1.0)
+	if flop:
+		pitch = -deg_to_rad(g["flop_deg"])
+	elif skidding:
+		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
+	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
+
+## A little puff of dust at the feet (purely visual).
+func puff(count: int, size: float) -> void:
+	if not is_inside_tree():
+		return
+	var pa = CPUParticles3D.new()
+	var mesh = SphereMesh.new()
+	mesh.radius = 0.09 * size
+	mesh.height = 0.18 * size
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.92, 0.9, 0.85, 0.8)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mesh.material = mat
+	pa.mesh = mesh
+	pa.one_shot = true
+	pa.emitting = true
+	pa.amount = maxi(count, 1)
+	pa.lifetime = 0.45
+	pa.explosiveness = 1.0
+	pa.direction = Vector3(0, 1, 0)
+	pa.spread = 80.0
+	pa.initial_velocity_min = 0.8 * size
+	pa.initial_velocity_max = 2.0 * size
+	pa.gravity = Vector3(0, 0.6, 0)
+	pa.damping_min = 3.0
+	pa.damping_max = 5.0
+	var curve = Curve.new()
+	curve.add_point(Vector2(0, 1))
+	curve.add_point(Vector2(1, 0))
+	pa.scale_amount_curve = curve
+	var grad = Gradient.new()
+	grad.set_color(0, Color(1, 1, 1, 0.9))
+	grad.set_color(1, Color(1, 1, 1, 0))
+	pa.color_ramp = grad
+	main.add_child(pa)
+	pa.global_position = global_position + Vector3(0, 0.1, 0)
+	pa.finished.connect(pa.queue_free)
 
 ## Advance the animation ourselves so the goofy arms go on after it, every frame.
 func _process(delta: float) -> void:
@@ -301,8 +378,8 @@ func _physics_process(delta: float) -> void:
 		global_position = global_position.lerp(net_pos, clampf(delta * 15.0, 0.0, 1.0))
 		visual.rotation = net_rot
 		return
-	if not is_on_floor():
-		velocity.y -= 20.0 * delta
+	if not is_on_floor() and stun > 0.0:
+		velocity.y -= SF.MOVE["gravity_down"] * delta
 	dive_cd = maxf(0.0, dive_cd - delta)
 	_update_held(delta)
 
@@ -320,33 +397,99 @@ func _physics_process(delta: float) -> void:
 
 	var dir = Vector3.ZERO
 	var sprint = false
+	var grounded = is_on_floor()
+	var m: Dictionary = SF.MOVE
 	if not main.paused_for_roll:
-		dir = Vector3(in_move.x, 0, in_move.y)
+		dir = Vector3(in_move.x, 0, in_move.y).limit_length(1.0)
 		sprint = in_sprint
-		if in_dive and dive_cd <= 0.0:
+	# Coyote time and jump buffer: forgiving, so jumps never feel eaten.
+	coyote_t = m["coyote"] if grounded else maxf(0.0, coyote_t - delta)
+	if in_dive:
+		jump_buf = m["jump_buffer"]
+	in_dive = false
+	jump_buf = maxf(0.0, jump_buf - delta)
+	if jump_buf > 0.0:
+		if coyote_t > 0.0 and dive_t <= 0.0:
+			velocity.y = m["jump_speed"]
+			coyote_t = 0.0
+			jump_buf = 0.0
+			jumped = true
+			land_sq = -m["jump_stretch"]
+			puff(6, 0.8)
+		elif not grounded and jumped and dive_t <= 0.0 and dive_cd <= 0.0:
+			# Second press in the air: belly flop forward.
 			dive_t = SF.DIVE_TIME
 			dive_cd = SF.DIVE_COOLDOWN
+			flop = true
 			dive_dir = dir.normalized() if dir.length() > 0.1 else facing
-	in_dive = false
-	if dir.length() > 0.1:
-		facing = dir.normalized()
-		visual.rotation.y = atan2(-facing.x, -facing.z)
+			velocity.x = dive_dir.x * SF.DIVE_SPEED
+			velocity.z = dive_dir.z * SF.DIVE_SPEED
+			velocity.y = maxf(velocity.y, m["flop_hop"])
+			jump_buf = 0.0
+	# Gravity: floaty at the top of the jump, quick on the way down.
+	if not grounded:
+		var g = m["gravity_up"] if velocity.y > 0.0 else m["gravity_down"]
+		if absf(velocity.y) < m["apex_band"] and not flop:
+			g *= m["apex_float"]
+		velocity.y -= g * delta
 
 	var speed = SF.MOVE_SPEED * (SF.SPRINT_MULT if sprint else 1.0)
 	var heavy = heavy_count()
 	if heavy > 0:
 		var slow = SF.CARRY_SLOW - SF.CARRY_SLOW_EXTRA * (heavy - 1)
 		speed *= slow if main.mod("featherweight") == 0 else 0.9
-	if dive_t > 0.0:
+	var flat = Vector3(velocity.x, 0, velocity.z)
+	if flop:
 		dive_t -= delta
-		velocity.x = dive_dir.x * SF.DIVE_SPEED
-		velocity.z = dive_dir.z * SF.DIVE_SPEED
-		if not has_model:
-			visual.rotation.x = -0.9
+		if grounded and dive_t <= 0.0:
+			# Belly slide, then pop back up.
+			flat = flat.move_toward(Vector3.ZERO, m["flop_friction"] * delta)
+			flop_slide += delta
+			if flop_slide >= m["flop_slide_time"] or flat.length() < 0.5:
+				flop = false
+				flop_slide = 0.0
+				land_sq = 0.35
+				puff(8, 1.0)
 	else:
-		velocity.x = dir.x * speed
-		velocity.z = dir.z * speed
+		var target = dir * speed
+		var rate: float
+		skidding = false
+		if not grounded:
+			rate = m["air_accel"]
+		elif dir.length() < 0.1:
+			rate = m["friction"]
+		elif flat.length() > speed * 0.5 and flat.normalized().dot(dir) < -0.2:
+			rate = m["skid_decel"]
+			skidding = true
+		else:
+			rate = m["accel"]
+		flat = flat.move_toward(target, rate * delta)
+		if skidding:
+			skid_t += delta
+			if skid_t > 0.08:
+				skid_t = 0.0
+				puff(2, 0.6)
+	velocity.x = flat.x
+	velocity.z = flat.z
+	if dir.length() > 0.1 and not flop:
+		facing = dir.normalized()
+	elif flop:
+		facing = dive_dir
+	# Turn smoothly toward where you're heading and bank into the corner.
+	var want_yaw = atan2(-facing.x, -facing.z)
+	var before = vis_yaw
+	vis_yaw = lerp_angle(vis_yaw, want_yaw, clampf(delta * m["turn_rate"], 0.0, 1.0))
+	turn_speed = lerpf(turn_speed, angle_difference(before, vis_yaw) / maxf(delta, 0.001), clampf(delta * 10.0, 0.0, 1.0))
+	visual.rotation.y = vis_yaw
+	var fall = velocity.y
 	move_and_slide()
+	if is_on_floor() and not grounded and fall < -1.0:
+		# Landing: squash and a puff of dust, bigger the harder you land.
+		land_sq = clampf(-fall / 12.0, 0.15, 0.5)
+		puff(int(clampf(-fall, 4.0, 12.0)), 1.0)
+		jumped = false
+	if is_on_floor() and not flop:
+		jumped = false
 
 	# Butterfingers: sprinting with something in hand can make you drop it.
 	if sprint and held and dir.length() > 0.1 and main.mod("butterfingers") > 0:
@@ -429,6 +572,7 @@ func drop_item(it: RigidBody3D, impulse: Vector3 = Vector3.ZERO) -> RigidBody3D:
 func zap() -> void:
 	var stun_time = SF.STUN_TIME * (0.5 ** main.mod("second_wind"))
 	stun = stun_time
+	flop = false
 	velocity = Vector3(randf_range(-4, 4), 7.0, randf_range(-4, 4))
 	# Everything you carry goes flying.
 	for it in items():
