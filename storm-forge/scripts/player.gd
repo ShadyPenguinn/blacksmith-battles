@@ -45,6 +45,9 @@ var act_t = 0.0                     # a one-shot action animation is playing
 var act_name = ""                   # last action, sent to clients so puppets play it too
 var act_seq = 0
 var act_seen = 0
+var goofy = null                    # goofy.gd: arms and head on top of the clip
+var goof = 0.0                      # how much goofy run is on right now (0-1)
+var step_phase = 0.0
 static var anim_lib: AnimationLibrary = null
 
 ## Every clip from the KayKit animation packs, loaded once and shared by all smiths.
@@ -98,11 +101,14 @@ func setup(p_main: Node, p_idx: int) -> void:
 		if not skels.is_empty():
 			skel = skels[0]
 			hand_bone = skel.find_bone("handslot.r")
+			goofy = preload("res://scripts/goofy.gd").new()
+			goofy.setup(skel)
 		var players_found = model.find_children("*", "AnimationPlayer", true, false)
 		if players_found.is_empty() and skel:
 			var ap = AnimationPlayer.new()
 			model.add_child(ap)
 			ap.add_animation_library("", _shared_anims())
+			ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 			players_found = [ap]
 		if not players_found.is_empty():
 			anim = players_found[0]
@@ -206,6 +212,7 @@ func hand_position() -> Vector3:
 func _animate(delta: float) -> void:
 	var moved = Vector2(global_position.x - last_pos.x, global_position.z - last_pos.z).length() / maxf(delta, 0.001)
 	last_pos = global_position
+	_goof(delta, moved)
 	if anim == null:
 		return
 	if act_seq != act_seen:
@@ -232,7 +239,48 @@ func _animate(delta: float) -> void:
 		state = "walk" if state == "run" and anim_names.has("walk") else "idle"
 	if state != anim_state and anim_names.has(state):
 		anim_state = state
-		anim.play(anim_names[state], 0.15)
+		anim.play(anim_names[state], 0.15, SF.GOOFY["clip_speed"] if state in ["walk", "run"] else 1.0)
+
+## Bounce, waddle, lean and squash while moving; arms and head go to goofy.gd.
+func _goof(delta: float, moved: float) -> void:
+	var g: Dictionary = SF.GOOFY
+	var want = 0.0
+	if stun <= 0.0 and dive_t <= 0.0 and act_t <= 0.0 and moved > 0.4:
+		want = clampf(moved / SF.MOVE_SPEED, 0.0, 1.3)
+	goof = move_toward(goof, want, delta * 6.0)
+	step_phase += moved * delta * g["steps_per_meter"]
+	if goofy:
+		goofy.amount = minf(goof, 1.0)
+		goofy.phase = step_phase
+	if stun > 0.0 or (dive_t > 0.0 and not has_model):
+		return
+	var bounce = absf(sin(step_phase * PI))        # 0 at each footfall, 1 mid-air
+	visual.position.y = 0.85 + bounce * g["hop"] * goof
+	var sq = (bounce - 0.5) * 2.0 * g["squash"] * goof   # stretch up high, squash on landing
+	visual.scale = Vector3(1.0 - sq * 0.5, 1.0 + sq, 1.0 - sq * 0.5)
+	visual.rotation.z = sin(step_phase * PI) * deg_to_rad(g["waddle_deg"]) * goof
+	if has_model or dive_t <= 0.0:
+		visual.rotation.x = -deg_to_rad(g["lean_deg"]) * minf(goof, 1.0)
+
+## Advance the animation ourselves so the goofy arms go on after it, every frame.
+func _process(delta: float) -> void:
+	if anim and anim.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL:
+		anim.advance(delta)
+		if goofy:
+			goofy.apply()
+	# Snap the held item to the hand after the final pose, so it never lags or drifts.
+	_place_in_hand()
+
+## The selected item goes in the model's right-hand slot (tongs carry their load along).
+func _place_in_hand() -> void:
+	if not has_model or sel < 0 or sel >= slots.size():
+		return
+	var it = slots[sel]
+	if it == null or not is_instance_valid(it) or not it.has_model:
+		return
+	it.global_transform = hand_transform() * it.grip.affine_inverse()
+	if it.tongs_load and is_instance_valid(it.tongs_load):
+		it.tongs_load.global_position = it.global_position - it.global_transform.basis.z * 0.55
 
 ## Play a one-shot action (mining swing, hammer blow, throw...). Host side; clients copy it.
 func act(what: String) -> void:
@@ -296,7 +344,6 @@ func _physics_process(delta: float) -> void:
 		if not has_model:
 			visual.rotation.x = -0.9
 	else:
-		visual.rotation.x = 0.0
 		velocity.x = dir.x * speed
 		velocity.z = dir.z * speed
 	move_and_slide()
