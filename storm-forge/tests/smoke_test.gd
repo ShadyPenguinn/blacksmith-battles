@@ -138,6 +138,8 @@ func _run() -> void:
 		t += 1
 	var ingots = items_of("ingot")
 	check(ingots.size() == 1 and ingots[0].tier == 0, "bellows heat in the band makes a copper ingot")
+	check(main.furnace.spout != null, "the furnace uses the stone forge model")
+	check(ingots.size() == 1 and ingots[0].global_position.y > 2.5, "the ingot shoots out of the chimney")
 
 	# Stomp bellows: jumping onto one heats the furnace; over-stomping burps.
 	main.lightning.next_in = 9999.0

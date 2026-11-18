@@ -28,6 +28,8 @@ var last_side = 0
 var last_stomp = -10.0
 var mouth: MeshInstance3D  # furnace: the glowing mouth, flares on each puff
 var fire_mat: StandardMaterial3D
+var spout: Node3D           # furnace model: top of the chimney, where ingots fly out
+var mouth_flares = true     # the placeholder mouth box squashes on each puff
 # Anvil: rope drop hammer
 var shape = 0.0          # slam power so far on the ingot
 var ham_h = 0.0          # how high the head is (meters above resting)
@@ -227,9 +229,58 @@ func _furnace_logic(delta: float) -> void:
 		if smelt >= SF.SMELT_TIME:
 			_consume(target)
 			smelt = 0.0
-			var ingot = main.spawn_item("ingot", global_position + Vector3(1.4, 1.0, 0.6), {"tier": target})
-			ingot.apply_central_impulse(Vector3(1.5, 2.0, 0.5) * ingot.mass)
+			if spout:
+				_launch_ingot(target)
+			else:
+				var ingot = main.spawn_item("ingot", global_position + Vector3(1.4, 1.0, 0.6), {"tier": target})
+				ingot.apply_central_impulse(Vector3(1.5, 2.0, 0.5) * ingot.mass)
 			main.toast(SF.material_name(target) + " ingot ready! Grab it with tongs.")
+
+## The chimney cap pops and the hot ingot shoots out, tumbling, to land somewhere random.
+func _launch_ingot(target: int) -> void:
+	var c: Dictionary = SF.CHIMNEY
+	var ingot = main.spawn_item("ingot", spout.global_position, {"tier": target})
+	var a = randf() * TAU
+	var sp = randf_range(c["min_speed"], c["max_speed"])
+	ingot.apply_central_impulse(Vector3(cos(a) * sp, c["up"], sin(a) * sp) * ingot.mass)
+	var t = c["spin"]
+	ingot.apply_torque_impulse(Vector3(randf_range(-t, t), randf_range(-t, t), randf_range(-t, t)) * ingot.mass)
+	pop_cap()
+	main.net_event("chimney", 0)
+
+## The cap flips open with a burst of sparks and smoke.
+func pop_cap() -> void:
+	if spout == null:
+		return
+	var found = find_children("*", "AnimationPlayer", true, false)
+	for ap in found:
+		if ap.has_animation("Pop"):
+			ap.stop()
+			ap.play("Pop")
+	Fx.burst(main, spout.global_position, Color(1.0, 0.6, 0.2), 14, 1.5, 5.0, 3.0, 0.5, Vector3(0, 1, 0), 35.0)
+	Fx.burst(main, spout.global_position, Color(0.35, 0.33, 0.32, 0.8), 10, 1.0, 2.5, 0.0, 0.9, Vector3(0, 1, 0), 30.0)
+
+## Swap the placeholder box for the stone forge model. Returns false if it's missing.
+func use_furnace_model() -> bool:
+	var m = SF.try_model("furnace_model")
+	if m == null:
+		return false
+	var vis = get_node_or_null("Visual")
+	if vis:
+		vis.visible = false
+	m.name = "Model"
+	m.position.y = -size.y * 0.5
+	add_child(m)
+	var glow = m.find_child("Glow", true, false)
+	if glow is MeshInstance3D:
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.07, 0.05, 0.04)
+		glow.material_override = mat
+		mouth = glow
+		mouth_flares = false
+	spout = m.find_child("Spout", true, false)
+	label.position.y = 2.95   # above the chimney
+	return true
 
 func _content_name(k: String) -> String:
 	if k.begins_with("scrap:"):
@@ -401,7 +452,9 @@ func squish(side: int) -> void:
 	if anim:   # the model's nozzle is tucked into the furnace: puff where it goes in
 		noz = b.global_position + Vector3(-side * (SF.BELLOWS["size"].x * 0.5 - SF.BELLOWS["nozzle_in"] - 0.05), 0.3, 0)
 	Fx.burst(main, noz, Color(0.95, 0.95, 0.9, 0.7), 8, 1.2, 4.0, 0.5, 0.35, Vector3(-side, 0.2, 0), 25.0)
-	if mouth:
+	if mouth and not mouth_flares:
+		Fx.burst(main, global_position + Vector3(0, -0.45, 1.15), Color(1.0, 0.55, 0.15), 10, 1.0, 3.0, 3.0, 0.45, Vector3(0, 1, 0.6), 40.0)
+	elif mouth:
 		Fx.burst(main, mouth.global_position + Vector3(0, 0.2, 0.15), Color(1.0, 0.55, 0.15), 10, 1.0, 3.0, 3.0, 0.45, Vector3(0, 1, 0.6), 40.0)
 		var tw2 = create_tween()
 		tw2.tween_property(mouth, "scale", Vector3(1.25, 1.8, 1.0), 0.06)
