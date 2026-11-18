@@ -916,7 +916,7 @@ func hint(p) -> String:
 func make_snapshot() -> Dictionary:
 	var ps = []
 	for p in players:
-		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq])
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq, not p.is_on_floor(), p.flop])
 	var its = {}
 	for it in get_tree().get_nodes_in_group("item"):
 		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
@@ -1001,6 +1001,9 @@ func apply_snapshot(s: Dictionary) -> void:
 		p.sel = d[5]
 		p.act_name = d[6]
 		p.act_seq = d[7]
+		if d.size() > 9:
+			p.net_air = d[8]
+			p.flop = d[9]
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	# Veins: match by id, add new ones, crumble the ones the host no longer has.

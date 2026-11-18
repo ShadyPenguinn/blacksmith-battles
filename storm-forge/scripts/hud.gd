@@ -2,7 +2,7 @@ extends CanvasLayer
 ## On-screen text: timer, door, buffs and debuffs, hints, toasts, the slot-machine roll.
 
 var main: Node
-const CONTROLS := "WASD move   Shift sprint   Space dive   E / right-click grab, place, drop   F / click use   Q throw   1-4 / wheel pick slot   Tab switch smith   L call lightning   N skip door"
+const CONTROLS := "WASD move   Shift sprint   Space jump (again in air: belly flop)   E / right-click grab, place, drop   F / click use   Q throw   1-4 / wheel pick slot   Tab switch smith   L call lightning   N skip door"
 var top_left: Label
 var top_right: Label
 var bottom: Label

@@ -22,6 +22,25 @@ const SPRINT_MULT := 1.5
 const CARRY_SLOW := 0.6           # speed multiplier while hauling ore, ingots or scrap
 const CARRY_SLOW_EXTRA := 0.07    # each extra heavy thing in your pockets slows you this much more
 const SLOTS := 4                  # hotbar: slot 1 is the tool slot, the rest hold anything but tools
+## How moving feels. Momentum, jump and the belly flop (jump, then jump again in the air).
+const MOVE := {
+	"accel": 38.0,            # how fast you get up to speed (m/s per second)
+	"friction": 16.0,         # how fast you slow down with no input (lower = slidier)
+	"skid_decel": 30.0,       # reversing hard: you skid to a stop first
+	"air_accel": 14.0,        # steering in the air
+	"turn_rate": 13.0,        # how quickly the body swings round to face where you go
+	"jump_speed": 7.0,
+	"gravity_up": 21.0,
+	"gravity_down": 34.0,     # fall faster than you rise, so jumps feel snappy
+	"apex_band": 2.2,         # near the top of a jump...
+	"apex_float": 0.45,       # ...gravity eases off for a floaty hang
+	"jump_stretch": 0.22,
+	"coyote": 0.12,           # you can still jump this long after walking off an edge
+	"jump_buffer": 0.15,      # a jump pressed this early before landing still happens
+	"flop_hop": 3.0,          # little upward pop when you start a belly flop
+	"flop_friction": 9.0,     # belly slide along the ground after a flop
+	"flop_slide_time": 0.55,
+}
 const DIVE_SPEED := 11.0
 const DIVE_TIME := 0.25
 const DIVE_COOLDOWN := 1.0
@@ -152,6 +171,8 @@ const ANIM_WORDS := {
 	"walk": ["walking_a", "walk"],
 	"run": ["running_a", "run"],
 	"dive": ["dodge_forward", "dodge", "roll"],
+	"air": ["jump_idle", "jump"],
+	"flop": ["jump_idle", "jump"],
 	"stun": ["death_a", "hit", "death"],
 }
 ## The goofy run laid over the walk and run clips. Tune freely.
@@ -164,6 +185,9 @@ const GOOFY := {
 	"arm_flap_deg": 30.0,     # arms flap up and down each step
 	"elbow_straighten": 0.75, # 0 = elbows bend like the clip, 1 = arms stick straight out
 	"head_wobble_deg": 12.0,
+	"bank": 0.06,             # lean into turns (per radian/second of turning)
+	"flop_deg": 75.0,         # belly flop: how far forward you tip
+	"skid_lean_deg": 14.0,    # lean back when you skid to reverse
 	"steps_per_meter": 1.3,   # higher = quicker little steps
 	"clip_speed": 1.35,       # walk and run clips play this much faster
 }
