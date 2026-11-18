@@ -246,7 +246,7 @@ func make_layout(i: int) -> Dictionary:
 			spots.clear()
 			var ok = true
 			for k in ["furnace", "anvil", "grindstone", "trough"]:
-				var pt = _free_spot(spots, Rect2(-10, -8, 20, 14), 4.0)
+				var pt = _free_spot(spots, Rect2(-10, -8, 20, 14), 4.5)
 				if pt == null:
 					ok = false
 					break
@@ -254,6 +254,10 @@ func make_layout(i: int) -> Dictionary:
 				spots.append(pt)
 			if ok and st["furnace"].distance_to(st["anvil"]) <= 8.0 and st["anvil"].distance_to(st["grindstone"]) <= 11.0:
 				break
+	# Keep veins off the bellows either side of the furnace.
+	var bx = 2.2 * 0.5 + SF.BELLOWS["size"].x * 0.5 + 0.35
+	spots.append(st["furnace"] + Vector2(-bx, 0))
+	spots.append(st["furnace"] + Vector2(bx, 0))
 	for k in st:
 		st[k] = Vector2(st[k].x + o.x, st[k].y + o.z)
 	var nodes = []
@@ -335,6 +339,8 @@ func build_area(lay: Dictionary) -> void:
 	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
 	fire.position = Vector3(0, -0.5, 1.12)
 	furnace.add_child(fire)
+	furnace.mouth = fire
+	furnace.add_bellows()
 	for n in lay["nodes"]:
 		_add_node(n)
 	if mod("rod") > 0:
@@ -385,6 +391,8 @@ func _vein_tick(delta: float) -> void:
 	var o = area_origin(door_index)
 	for st in get_tree().get_nodes_in_group("station"):
 		taken.append(Vector2(st.global_position.x - o.x, st.global_position.z - o.z))
+		for b in st.bellows:
+			taken.append(Vector2(b.global_position.x - o.x, b.global_position.z - o.z))
 	for p in players:
 		taken.append(Vector2(p.global_position.x - o.x, p.global_position.z - o.z))
 	var pt = _free_spot(taken, Rect2(-11, -8, 22, 19), 3.2)
@@ -876,8 +884,7 @@ func use(p) -> String:
 				return _say(p, door.door_hit(p, h))
 		"tongs":
 			if nearest_station(p, ["furnace"]):
-				furnace.pump()
-				return _say(p, "Whoosh")
+				return _say(p, "Jump on the bellows to blow air in")
 		"hammer":
 			if nearest_station(p, ["anvil"]):
 				return _say(p, anvil.hammer())
@@ -916,8 +923,6 @@ func swing_target(p) -> Node3D:
 			if n:
 				return n
 			return door if _near_door(p) else null
-		"tongs":
-			return nearest_station(p, ["furnace"])
 		"hammer":
 			var a = nearest_station(p, ["anvil"])
 			if a:
@@ -1161,9 +1166,28 @@ func apply_snapshot(s: Dictionary) -> void:
 	lightning.ring.visible = l[0]
 	lightning.ring.global_position = Vector3(l[1].x, 0.08, l[1].z)
 
+## Host: tell clients about a one-off thing (no-op offline).
+func net_event(kind: String, data) -> void:
+	if is_online() and net.mode == "host":
+		net.send_event(kind, data)
+
+## Host: a smith landed on a bellows.
+func stomp(p, b: Node3D, fall: float) -> void:
+	var f = b.get_meta("bellows")
+	if f == null or f.dead:
+		return
+	var power = clampf(-fall / 7.0, 0.6, 1.3) * (1.5 if p.flop else 1.0)
+	f.stomp(b.get_meta("side"), power)
+
 ## Client: one-off things the host tells us about.
 func apply_event(kind: String, data) -> void:
 	match kind:
+		"stomp":
+			if furnace:
+				furnace.squish(data)
+		"burp":
+			if furnace:
+				furnace.burp_fx()
 		"toast":
 			toasts.append(data)
 			hud.toast(data)

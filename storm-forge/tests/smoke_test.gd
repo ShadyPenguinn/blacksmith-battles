@@ -132,12 +132,36 @@ func _run() -> void:
 	await frames(2)
 	var t = 0
 	while items_of("ingot").is_empty() and t < 900:
-		if main.furnace.heat < 42.0:
-			main.use(smelter)
+		if main.furnace.heat < 42.0 and t % 30 == 0:
+			main.furnace.stomp(1 if (t / 30) % 2 == 0 else -1, 1.0)
 		await frames(1)
 		t += 1
 	var ingots = items_of("ingot")
 	check(ingots.size() == 1 and ingots[0].tier == 0, "bellows heat in the band makes a copper ingot")
+
+	# Stomp bellows: jumping onto one heats the furnace; over-stomping burps.
+	main.lightning.next_in = 9999.0
+	var heat0 = main.furnace.heat
+	var bel = main.furnace.bellows[1]
+	put(smelter, bel.global_position + Vector3(0, 0, 0))
+	smelter.global_position = bel.global_position + Vector3(0, 2.2, 0)
+	for i in 90:
+		await physics_frame
+		if main.furnace.heat > heat0 + 1.0:
+			break
+	check(main.furnace.heat > heat0 + 1.0, "landing on a bellows heats the furnace")
+	main.furnace.heat = 40.0
+	main.furnace.stomp(-1, 1.0)
+	var after_one = main.furnace.heat
+	main.furnace.stomp(-1, 1.0)
+	check(main.furnace.heat - after_one < SF.BELLOWS["heat"] * 0.6, "stomping the same side twice pumps less")
+	put(miner, main.furnace.global_position + Vector3(0, 0, 2.5))
+	for i in SF.BELLOWS["burp_stomps"]:
+		main.furnace.stomp(1 if i % 2 == 0 else -1, 1.0)
+	check(miner.stun > 0.0, "over-stomping makes the furnace burp and knock people back")
+	await create_timer(1.5).timeout
+	put(smelter, main.furnace.global_position + Vector3(1.5, 0, 2.5))
+	await frames(2)
 	await frames(40)
 
 	# Tongs grip the hot ingot and place it on the anvil.

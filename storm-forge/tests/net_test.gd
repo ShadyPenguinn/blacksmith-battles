@@ -50,8 +50,8 @@ func _host() -> void:
 	check(main.players.size() == 2, "two smiths in a two-player game")
 	main.lightning.next_in = 9999.0
 	var p1 = main.players[1]
-	p1.global_position = main.furnace.global_position + Vector3(1.5, 0, 1.6)
-	check(await wait_until(func(): return main.furnace.heat > 0.0, 15.0), "client's Use pumped the bellows on the host")
+	p1.global_position = main.furnace.bellows[1].global_position + Vector3(0, 0.7, 0)
+	check(await wait_until(func(): return main.furnace.heat > 0.0, 15.0), "client's jump on the bellows heated the furnace on the host")
 	var x0 = p1.global_position.x
 	check(await wait_until(func(): return p1.global_position.x > x0 + 0.8, 15.0), "client's movement moved its smith on the host")
 	await wait(1.0)
@@ -82,8 +82,8 @@ func _client() -> void:
 	check(await wait_until(func(): return me.sel == 0 and me.held != null, 5.0), "client switches back to its tool")
 	await wait(1.0)
 	for i in 6:
-		main.net.send_action("use", {})
-		await wait(0.1)
+		main.net.send_action("dive", {})   # jump (Space) on the bellows the host put us on
+		await wait(1.4)
 	check(await wait_until(func(): return main.furnace.heat > 0.0, 5.0), "furnace heat came back to the client")
 	var x0 = me.global_position.x
 	main.net.scripted_input = true

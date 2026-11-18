@@ -316,6 +316,15 @@ func _goof(delta: float, moved: float) -> void:
 		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
 	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
 
+## The bellows under your feet, if you're standing on one.
+func _floor_bellows() -> Node3D:
+	for i in get_slide_collision_count():
+		var c = get_slide_collision(i)
+		var o = c.get_collider()
+		if o and o.has_meta("bellows") and c.get_normal().y > 0.5:
+			return o
+	return null
+
 ## End a belly flop: pop up onto your feet, keeping your slide as a walk.
 func _stand_up() -> void:
 	flop = false
@@ -616,6 +625,11 @@ func _physics_process(delta: float) -> void:
 	visual.rotation.y = vis_yaw
 	var fall = velocity.y
 	move_and_slide()
+	if is_on_floor() and not grounded and fall < -SF.BELLOWS["min_fall"]:
+		var b = _floor_bellows()
+		if b:
+			main.stomp(self, b, fall)
+			velocity.y = SF.BELLOWS["boing"]
 	if is_on_floor() and not grounded and fall < -1.0:
 		# Landing: squash and a puff of dust, bigger the harder you land.
 		land_sq = clampf(-fall / 12.0, 0.15, 0.5)

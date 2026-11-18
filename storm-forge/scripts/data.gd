@@ -54,6 +54,21 @@ const VEIN_RESPAWN := 30.0        # seconds between lightning cracking open a ne
 const VEIN_EXTRA := 2             # new veins can push an area this far past its starting count
 const AREA_STEP := 27.0           # each new area sits this far past the last one
 const HEAT_PER_PUMP := 9.0
+## Stomp bellows: jump on the accordions either side of the furnace to blow air in.
+const BELLOWS := {
+	"size": Vector3(1.3, 0.6, 1.3),
+	"heat": 11.0,             # heat per stomp (a belly flop counts 1.5x)
+	"min_fall": 3.5,          # you have to land on it (walking on doesn't pump)
+	"boing": 2.5,             # it springs you back up a little
+	"same_side_window": 0.9,  # the same bellows again this soon...
+	"same_side_mult": 0.4,    # ...only pumps this much: alternate sides
+	"burp_window": 1.8,       # this many stomps in this many seconds...
+	"burp_stomps": 5,         # ...and the furnace burps a fireball
+	"burp_heat_loss": 25.0,
+	"burp_radius": 4.0,
+	"burp_push": 7.0,
+	"burp_stun": 0.8,
+}
 const HEAT_DECAY := 6.0           # heat lost per second
 const SMELT_TIME := 3.0           # seconds in the heat band to make an ingot
 const OVERHEAT_MARGIN := 12.0     # this far above the band = slag
