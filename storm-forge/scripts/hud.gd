@@ -49,7 +49,7 @@ func setup(p_main: Node) -> void:
 	controls.text = CONTROLS
 	toast_label = _label(Vector2(0, 0), 30)
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_place(toast_label, 0.5, 0.0, -500, 90, 1000, 44)
+	_place(toast_label, 0.5, 0.0, -450, 230, 900, 44)
 	action_label = _label(Vector2(0, 0), 26)
 	action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_place(action_label, 0.5, 1.0, -400, -160, 800, 40)

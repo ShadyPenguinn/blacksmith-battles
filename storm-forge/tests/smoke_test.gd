@@ -146,6 +146,7 @@ func _run() -> void:
 	smith.pick_up(weapons[0])
 	put(smith, Vector3(3, 0, main.door.global_position.z + 1.6))
 	await frames(2)
+	var old_door = main.door
 	var hp_before: float = main.door.hp
 	main.use(smith)
 	check(main.door.hp < hp_before, "sword damages the door")
@@ -170,6 +171,30 @@ func _run() -> void:
 	check(main.door_index == 1 and not main.paused_for_roll, "next area starts after the roll")
 	check(main.mods.size() >= 1, "a buff and debuff were added")
 	check(get_nodes_in_group("node").size() > 0, "new ore nodes spawned")
+	check(main.furnace.global_position.z < -14.0 and main.door.global_position.z < -35.0, "the next area has its own forge past the old door")
+	check(main.areas.size() == 2, "the area you came from stays, older ones are cleared")
+
+	# Veins run dry, and lightning opens new ones.
+	main.lightning.next_in = 9999.0
+	var pickaxe = items_of("tool").filter(func(i): return i.tool == "pickaxe")[0]
+	if pickaxe.holder:
+		pickaxe.holder.take(pickaxe)
+	if miner.slots[0]:
+		miner.drop_item(miner.slots[0])
+	pickaxe.release()
+	miner.select(0)
+	miner.pick_up(pickaxe)
+	var vein = main.area_nodes[0]
+	vein.set_chunks(1)
+	put(miner, vein.global_position + Vector3(0, 0, 1.2))
+	await frames(2)
+	var veins_before = main.area_nodes.size()
+	for i in SF.MINE_HITS:
+		main.use(miner)
+	check(not (vein in main.area_nodes) and main.area_nodes.size() == veins_before - 1, "a vein crumbles after its last chunk")
+	main.vein_t = SF.VEIN_RESPAWN
+	await frames(3)
+	check(main.area_nodes.size() == veins_before, "lightning cracks open a new vein")
 
 	# Bronze recipe.
 	main.furnace.contents = {"copper": 1, "tin": 1}

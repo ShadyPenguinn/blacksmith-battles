@@ -29,6 +29,10 @@ const REACH := 2.2
 
 # --- Forge pipeline ---
 const MINE_HITS := 3
+const VEIN_CHUNKS := 4            # chunks in a vein before it's tapped out (each vein gets 3-5)
+const VEIN_RESPAWN := 30.0        # seconds between lightning cracking open a new vein
+const VEIN_EXTRA := 2             # new veins can push an area this far past its starting count
+const AREA_STEP := 27.0           # each new area sits this far past the last one
 const HEAT_PER_PUMP := 9.0
 const HEAT_DECAY := 6.0           # heat lost per second
 const SMELT_TIME := 3.0           # seconds in the heat band to make an ingot
@@ -110,8 +114,14 @@ const DEBUFFS := [
 ## Drop-in models. Put a .glb/.gltf path here (for example a KayKit file you copied into
 ## res://assets/kaykit/) and that object uses the model instead of the placeholder shape.
 ## Leave a value empty to keep the placeholder.
+## Character models: one per role, or "smith" for all four. Rigged models with an
+## AnimationPlayer get idle/walk/run/dodge/hit animations picked by name.
 const MODELS := {
 	"smith": "",
+	"smith_miner": "",
+	"smith_smelter": "",
+	"smith_smith": "",
+	"smith_finisher": "",
 	"pickaxe": "",
 	"tongs": "",
 	"hammer": "",
@@ -125,6 +135,17 @@ const MODELS := {
 	"grindstone": "",
 	"trough": "",
 	"door": "",
+}
+
+const SMITH_MODEL_SCALE := 1.0   # KayKit characters may need scaling to fit the 1.7 m capsule
+const SMITH_MODEL_YAW := PI       # KayKit models face +Z; Godot's forward is -Z
+## Animation picked for each state: the first clip whose name contains one of these words.
+const ANIM_WORDS := {
+	"idle": ["idle"],
+	"walk": ["walking_a", "walk"],
+	"run": ["running_a", "run"],
+	"dive": ["dodge", "roll", "jump"],
+	"stun": ["hit", "death", "lie"],
 }
 
 static func material_name(tier: int) -> String:

@@ -20,12 +20,19 @@ var weak: MeshInstance3D  # door weak spot
 var weak_x = 0.0
 var label: Label3D
 var size = Vector3.ONE
+var node_id = 0          # node: id for online sync
+var chunks = 0           # node: chunks left before the vein is tapped out
+var max_chunks = 0
+var dead = false         # a station left behind in an earlier area: just scenery now
 
 func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Dictionary = {}) -> void:
 	main = p_main
 	kind = p_kind
 	size = p_size
 	ore = opts.get("ore", "")
+	node_id = opts.get("node_id", 0)
+	chunks = opts.get("chunks", SF.VEIN_CHUNKS)
+	max_chunks = maxi(chunks, 1)
 	add_to_group("station")
 	if kind == "node":
 		add_to_group("node")
@@ -53,11 +60,33 @@ func set_ore(o: String) -> void:
 	if v is MeshInstance3D:
 		(v as MeshInstance3D).material_override = Build.mat(SF.ORE_COLORS.get(o, Color.GRAY), 0.6 if o == "starmetal" else 0.0)
 
+## Leave this station behind in an old area: it stops working and drops what's on it.
+func retire() -> void:
+	dead = true
+	remove_from_group("station")
+	remove_from_group("node")
+	label.text = ""
+	if slot and is_instance_valid(slot):
+		var it = slot
+		clear_slot(it)
+		it.station = null
+		it.release()
+
+func set_chunks(n: int) -> void:
+	chunks = n
+	var v = get_node_or_null("Visual")
+	if v:
+		var k = lerpf(0.45, 1.0, float(chunks) / max_chunks)
+		v.scale = Vector3(k, k, k)
+		v.position.y = -size.y * 0.5 * (1.0 - k)
+
 func _physics_process(delta: float) -> void:
+	if dead:
+		return
 	beat_t += delta
 	match kind:
 		"node":
-			label.text = ore.capitalize() + (("  " + "*".repeat(hits) if hits > 0 else ""))
+			label.text = "%s  %d left%s" % [ore.capitalize(), chunks, ("  " + "*".repeat(hits) if hits > 0 else "")]
 		"furnace":
 			_furnace_tick(delta)
 		"anvil":
@@ -285,6 +314,11 @@ func mine() -> String:
 		hits = 0
 		var chunk = main.spawn_item("ore", global_position + Vector3(0, size.y * 0.5 + 0.5, 0), {"ore": ore})
 		chunk.apply_central_impulse(Vector3(randf_range(-1.5, 1.5), 3.0, randf_range(0.5, 2.0)) * chunk.mass)
+		set_chunks(chunks - 1)
+		if chunks <= 0:
+			var name = ore.capitalize()
+			main.remove_node(self)
+			return name + " ore! The vein is tapped out."
 		return ore.capitalize() + " ore!"
 	return "Tink"
 

@@ -45,7 +45,9 @@ Every smith has 4 slots. Slot 1 holds your one tool, and you can never carry two
 5. **Smith** hits the anvil with the hammer (F) when the O is in the `===` zone. 4 hits makes a blade, 3 misses makes scrap.
 6. Carry the blade to the **grindstone**. **Finisher** fills the bucket at the trough, quenches the blade, then grinds on the beat 3 times.
 7. Take the sword to the **door** and swing (F). Hit the glowing weak spot for double damage. A sword below the door's metal bounces off. Broken swords become scrap; put scrap back in the furnace.
-8. Door down: a random buff and debuff roll, then the next area with a new metal.
+8. Door down: a random buff and debuff roll, then you walk through into the next area. Each area has its own furnace, anvil, grindstone and trough in a new spot, plus veins of the new metal. Area 1 always uses the same starter layout.
+
+**Ore veins** hold 3-5 chunks each (shown as "N left") and crumble when empty. About every 30 seconds, lightning cracks open a new vein somewhere in the area, up to 2 more than the area started with.
 
 **Lightning:** a ring warns you 1.5 seconds before a strike and stops following you just before it lands, so you can dive out. Getting hit stuns you and flings what you hold. Holding metal makes you a likelier target. A full bucket splashed on a stunned friend revives them. From door 6, strikes turn ore nodes into Starmetal.
 
@@ -58,6 +60,8 @@ Every number is at the top of `scripts/data.gd`: timer, strike rate, heat bands,
 ## Dropping in KayKit models
 
 Copy models into `assets/kaykit/` (git ignores that folder) and set paths in `SF.MODELS` in `scripts/data.gd`, for example `"anvil": "res://assets/kaykit/anvil.gltf"`. Any key left empty keeps its placeholder shape. Collision boxes stay the same size, so scale the model to fit.
+
+Characters: set `smith` for all four, or `smith_miner`, `smith_smelter`, `smith_smith` and `smith_finisher` for one each. A rigged model's AnimationPlayer is used automatically: clips are picked by name (idle, walk, run, dodge, hit), and the word lists are in `SF.ANIM_WORDS`. `SF.SMITH_MODEL_SCALE` and `SF.SMITH_MODEL_YAW` fix size and facing.
 
 ## Tests
 

@@ -30,6 +30,11 @@ var net: Node
 var next_item_id = 1
 var items_by_id = {}
 var area_nodes: Array = []
+var areas = {}              # door index -> that area's root node (current and previous only)
+var layout: Dictionary = {} # where this area's stations and veins are
+var next_node_id = 1
+var vein_t = 0.0
+var rain: GPUParticles3D
 
 var lightning: Node3D
 var door: StaticBody3D
@@ -166,32 +171,11 @@ func _build_world() -> void:
 	cam.fov = 55
 	add_child(cam)
 
-	# Ground and boundary.
-	var ground = StaticBody3D.new()
-	ground.collision_layer = 1
-	ground.add_child(Build.box_shape(Vector3(26, 1, 30)))
-	ground.add_child(Build.box(Vector3(26, 1, 30), Color(0.35, 0.4, 0.3)))
-	add_child(ground)
-	ground.position = Vector3(0, -0.5, -1)
-	_wall(Vector3(-13.5, 2, -1), Vector3(1, 4, 30), true)
-	_wall(Vector3(13.5, 2, -1), Vector3(1, 4, 30), true)
-	_wall(Vector3(0, 2, 14.5), Vector3(28, 4, 1), false)
-	_wall(Vector3(-9.5, 4, -12.5), Vector3(7, 8, 2), true)
-	_wall(Vector3(9.5, 4, -12.5), Vector3(7, 8, 2), true)
-
 	items_root = Node3D.new()
 	add_child(items_root)
 	nodes_root = Node3D.new()
 	add_child(nodes_root)
-
-	door = _station("door", Vector3(0, 3.5, -12.5), Vector3(12, 7, 1), Color(0.35, 0.22, 0.12))
-	furnace = _station("furnace", Vector3(-6, 1.1, -3), Vector3(2.2, 2.2, 2.2), Color(0.45, 0.2, 0.15))
-	anvil = _station("anvil", Vector3(-2, 0.45, -3), Vector3(1.3, 0.9, 0.7), Color(0.3, 0.3, 0.34))
-	grindstone = _station("grindstone", Vector3(2.5, 0.5, -3), Vector3(1.1, 1.0, 1.1), Color(0.7, 0.62, 0.45))
-	trough = _station("trough", Vector3(6.5, 0.35, -3), Vector3(1.8, 0.7, 0.9), Color(0.25, 0.45, 0.75))
-	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
-	fire.position = Vector3(0, -0.5, 1.12)
-	furnace.add_child(fire)
+	build_area(make_layout(0))
 
 	lightning = Node3D.new()
 	lightning.set_script(LightningScript)
@@ -205,25 +189,216 @@ func _build_world() -> void:
 	add_child(hud)
 	hud.setup(self)
 
-func _wall(pos: Vector3, size: Vector3, visible_wall: bool) -> void:
+func _wall(parent: Node3D, pos: Vector3, size: Vector3, visible_wall: bool) -> void:
 	var w = StaticBody3D.new()
 	w.collision_layer = 1
 	w.add_child(Build.box_shape(size))
 	if visible_wall:
 		w.add_child(Build.box(size, Color(0.4, 0.38, 0.36)))
-	add_child(w)
-	w.position = pos
+	parent.add_child(w)
+	w.global_position = pos
 
-func _station(kind: String, pos: Vector3, size: Vector3, color: Color, opts: Dictionary = {}) -> StaticBody3D:
+func _station(kind: String, pos: Vector3, size: Vector3, color: Color, opts: Dictionary = {}, parent: Node = null) -> StaticBody3D:
 	var s = StaticBody3D.new()
 	s.set_script(StationScript)
 	s.setup(self, kind, size, color, opts)
-	(nodes_root if kind == "node" else self).add_child(s)
+	if parent == null:
+		parent = nodes_root if kind == "node" else self
+	parent.add_child(s)
 	s.global_position = pos
 	return s
 
+# ---------------------------------------------------------------- areas
+
+## Areas run in a line: area i sits AREA_STEP further back than area i-1, and its back
+## edge is the doorway of the area before it, so breaking a door opens the way forward.
+func area_origin(i: int) -> Vector3:
+	return Vector3(0, 0, -SF.AREA_STEP * i)
+
+func area_center() -> Vector3:
+	return area_origin(door_index) + Vector3(0, 0, -2)
+
+const STATION_SIZES := {
+	"furnace": Vector3(2.2, 2.2, 2.2), "anvil": Vector3(1.3, 0.9, 0.7),
+	"grindstone": Vector3(1.1, 1.0, 1.1), "trough": Vector3(1.8, 0.7, 0.9),
+}
+const STATION_COLORS := {
+	"furnace": Color(0.45, 0.2, 0.15), "anvil": Color(0.3, 0.3, 0.34),
+	"grindstone": Color(0.7, 0.62, 0.45), "trough": Color(0.25, 0.45, 0.75),
+}
+
+## Host: pick where everything goes in area i. Area 1 uses the classic layout; later
+## areas shuffle the stations and veins (furnace and anvil stay close for hot ingots).
+func make_layout(i: int) -> Dictionary:
+	var o = area_origin(i)
+	var st = {}
+	var spots = []
+	if i == 0:
+		st = {"furnace": Vector2(-6, -3), "anvil": Vector2(-2, -3), "grindstone": Vector2(2.5, -3), "trough": Vector2(6.5, -3)}
+		for k in st:
+			spots.append(st[k])
+	else:
+		var tries = 0
+		while tries < 200:
+			tries += 1
+			st.clear()
+			spots.clear()
+			var ok = true
+			for k in ["furnace", "anvil", "grindstone", "trough"]:
+				var pt = _free_spot(spots, Rect2(-10, -8, 20, 14), 4.0)
+				if pt == null:
+					ok = false
+					break
+				st[k] = pt
+				spots.append(pt)
+			if ok and st["furnace"].distance_to(st["anvil"]) <= 8.0 and st["anvil"].distance_to(st["grindstone"]) <= 11.0:
+				break
+	for k in st:
+		st[k] = Vector2(st[k].x + o.x, st[k].y + o.z)
+	var nodes = []
+	var cfg: Dictionary = SF.DOORS[i]
+	var slot = 0
+	for ore in cfg["nodes"]:
+		for n in cfg["nodes"][ore]:
+			var pt
+			if i == 0 and slot < NODE_SLOTS.size():
+				pt = NODE_SLOTS[slot]
+			else:
+				pt = _free_spot(spots, Rect2(-11, -8, 22, 19), 3.2)
+			slot += 1
+			if pt == null:
+				continue
+			spots.append(pt)
+			nodes.append([next_node_id, ore, pt.x + o.x, pt.y + o.z, randi_range(SF.VEIN_CHUNKS - 1, SF.VEIN_CHUNKS + 1)])
+			next_node_id += 1
+	return {"door": i, "stations": st, "nodes": nodes}
+
+## A random point in rect (area-local x, z) at least gap from every taken point, or null.
+func _free_spot(taken: Array, rect: Rect2, gap: float):
+	for t in 80:
+		var pt = Vector2(randf_range(rect.position.x, rect.end.x), randf_range(rect.position.y, rect.end.y))
+		var ok = true
+		for q in taken:
+			if pt.distance_to(q) < gap:
+				ok = false
+				break
+		if ok:
+			return pt
+	return null
+
+## Build area layout["door"] from a layout (host makes it, clients get it in the "area" event).
+## The new stations become the live ones; the previous area's stations turn into scenery.
+func build_area(lay: Dictionary) -> void:
+	var i: int = lay["door"]
+	layout = lay
+	var o = area_origin(i)
+	for k in areas.keys():
+		if k < i - 1 or k >= i:
+			_free_area(k)
+	for st in [furnace, anvil, grindstone, trough]:
+		if st and is_instance_valid(st):
+			st.retire()
+	if door and is_instance_valid(door):
+		door.retire()
+		door.queue_free()
+	_clear_nodes()
+	if rod and is_instance_valid(rod):
+		rod.queue_free()
+	rod = null
+	var root = Node3D.new()
+	root.name = "Area%d" % i
+	add_child(root)
+	areas[i] = root
+	var ground = StaticBody3D.new()
+	ground.collision_layer = 1
+	ground.add_child(Build.box_shape(Vector3(26, 1, 27)))
+	ground.add_child(Build.box(Vector3(26, 1, 27), Color(0.35, 0.4, 0.3).lerp(Color(0.3, 0.3, 0.33), i / 8.0)))
+	root.add_child(ground)
+	ground.global_position = o + Vector3(0, -0.5, 1)
+	_wall(root, o + Vector3(-13.5, 2, 1), Vector3(1, 4, 27), true)
+	_wall(root, o + Vector3(13.5, 2, 1), Vector3(1, 4, 27), true)
+	if i == 0:
+		_wall(root, o + Vector3(0, 2, 14.5), Vector3(28, 4, 1), false)
+	_wall(root, o + Vector3(-9.5, 4, -12.5), Vector3(7, 8, 2), true)
+	_wall(root, o + Vector3(9.5, 4, -12.5), Vector3(7, 8, 2), true)
+	door = _station("door", o + Vector3(0, 3.5, -12.5), Vector3(12, 7, 1), Color(0.35, 0.22, 0.12), {}, root)
+	var st: Dictionary = lay["stations"]
+	var made = {}
+	for k in ["furnace", "anvil", "grindstone", "trough"]:
+		var sz: Vector3 = STATION_SIZES[k]
+		made[k] = _station(k, Vector3(st[k].x, sz.y * 0.5, st[k].y), sz, STATION_COLORS[k], {}, root)
+	furnace = made["furnace"]
+	anvil = made["anvil"]
+	grindstone = made["grindstone"]
+	trough = made["trough"]
+	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
+	fire.position = Vector3(0, -0.5, 1.12)
+	furnace.add_child(fire)
+	for n in lay["nodes"]:
+		_add_node(n)
+	if mod("rod") > 0:
+		rod = _station("rod", o + Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8), {}, root)
+	# Loose things left two areas back are gone for good.
+	for it in get_tree().get_nodes_in_group("item"):
+		if it.is_free() and it.station == null and it.global_position.z > o.z + SF.AREA_STEP + 14.5:
+			despawn(it)
+	if rain:
+		rain.global_position = o + Vector3(0, 16, -1)
+
+func _free_area(k: int) -> void:
+	if areas.has(k):
+		var root = areas[k]
+		areas.erase(k)
+		if is_instance_valid(root):
+			for c in root.get_children():
+				if c.has_method("retire"):
+					c.retire()
+			root.queue_free()
+
+## [id, ore, x, z, chunks]
+func _add_node(n: Array) -> StaticBody3D:
+	var node = _station("node", Vector3(n[2], 0.6, n[3]), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[n[1]], {"ore": n[1], "node_id": n[0], "chunks": n[4]})
+	area_nodes.append(node)
+	next_node_id = maxi(next_node_id, n[0] + 1)
+	return node
+
+## A vein ran dry: it crumbles away.
+func remove_node(n: Node3D) -> void:
+	area_nodes.erase(n)
+	n.retire()
+	n.queue_free()
+
+## Host: every so often lightning cracks open a fresh vein somewhere in the area.
+func _vein_tick(delta: float) -> void:
+	vein_t += delta
+	if vein_t < SF.VEIN_RESPAWN:
+		return
+	vein_t = 0.0
+	var cfg: Dictionary = SF.DOORS[door_index]
+	var start_count = 0
+	for ore in cfg["nodes"]:
+		start_count += cfg["nodes"][ore]
+	if area_nodes.size() >= start_count + SF.VEIN_EXTRA:
+		return
+	var taken = []
+	var o = area_origin(door_index)
+	for st in get_tree().get_nodes_in_group("station"):
+		taken.append(Vector2(st.global_position.x - o.x, st.global_position.z - o.z))
+	for p in players:
+		taken.append(Vector2(p.global_position.x - o.x, p.global_position.z - o.z))
+	var pt = _free_spot(taken, Rect2(-11, -8, 22, 19), 3.2)
+	if pt == null:
+		return
+	var ore = cfg["nodes"].keys().pick_random()
+	var pos = Vector3(pt.x + o.x, 0, pt.y + o.z)
+	lightning._bolt(pos)
+	flash()
+	net.send_event("strike", pos)
+	_add_node([next_node_id, ore, pos.x, pos.z, randi_range(SF.VEIN_CHUNKS - 1, SF.VEIN_CHUNKS + 1)])
+	toast("Lightning cracked open a new %s vein!" % ore)
+
 func _rain() -> void:
-	var rain = GPUParticles3D.new()
+	rain = GPUParticles3D.new()
 	rain.amount = 1500
 	rain.lifetime = 1.0
 	rain.visibility_aabb = AABB(Vector3(-16, -20, -18), Vector3(32, 24, 36))
@@ -257,11 +432,12 @@ func start_run(n: int = -1) -> void:
 	paused_for_roll = false
 	door_index = 0
 	mods = {}
-	if rod:
-		rod.queue_free()
-		rod = null
 	for it in get_tree().get_nodes_in_group("item"):
 		despawn(it)
+	for k in areas.keys():
+		_free_area(k)
+	door = null
+	build_area(make_layout(0))
 	_make_players(player_count)
 	for i in SF.ROLES.size():
 		var t = spawn_item("tool", TOOL_SPOTS[i], {"tool": SF.ROLES[i]["tool"]})
@@ -274,8 +450,6 @@ func start_run(n: int = -1) -> void:
 			p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
 			p.velocity = Vector3.ZERO
 			p.pick_up(t)
-	furnace.contents.clear()
-	furnace.heat = 0.0
 	set_controlled(net.my_smith if is_online() else 0)
 	hud.hide_big()
 	net.send_event("restart")
@@ -300,17 +474,9 @@ func start_area() -> void:
 	area_time = maxf(60.0, SF.AREA_TIME + 30.0 * (mod("long_fuse") - mod("short_fuse")))
 	time_left = area_time
 	peak_time = 0.0
-	_clear_nodes()
-	var slot = 0
-	for ore in cfg["nodes"]:
-		for k in cfg["nodes"][ore]:
-			if slot >= NODE_SLOTS.size():
-				break
-			var s: Vector2 = NODE_SLOTS[slot]
-			area_nodes.append(_station("node", Vector3(s.x, 0.6, s.y), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[ore], {"ore": ore}))
-			slot += 1
+	vein_t = 0.0
 	if mod("rod") > 0 and rod == null:
-		rod = _station("rod", Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8))
+		rod = _station("rod", area_origin(door_index) + Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8), {}, areas.get(door_index))
 	lightning.reset_area()
 	env.background_color = cfg["sky"]
 	send_area()
@@ -319,17 +485,15 @@ func start_area() -> void:
 func _clear_nodes() -> void:
 	for n in area_nodes:
 		if is_instance_valid(n):
-			n.remove_from_group("node")
-			n.remove_from_group("station")
+			n.retire()
 			n.queue_free()
 	area_nodes.clear()
 
-## Host: tell clients which ore nodes this area has.
+## Host: tell clients the layout of the current area.
 func send_area() -> void:
-	var list = []
-	for n in area_nodes:
-		list.append([n.ore, n.global_position.x, n.global_position.z])
-	net.send_event("area", {"door": door_index, "nodes": list, "rod": rod != null})
+	var lay = layout.duplicate(true)
+	lay["rod"] = rod != null
+	net.send_event("area", lay)
 
 func door_broken() -> void:
 	if paused_for_roll or over:
@@ -341,6 +505,8 @@ func door_broken() -> void:
 		show_big("You broke the Storm Gate!", "All 8 doors down. The host presses R to play again.")
 		return
 	paused_for_roll = true
+	build_area(make_layout(door_index))
+	send_area()
 	var buff: Dictionary = SF.BUFFS.pick_random()
 	var debuff: Dictionary = SF.DEBUFFS.pick_random()
 	hud.show_roll(buff, debuff)
@@ -357,6 +523,7 @@ func _finish_roll(buff: Dictionary, debuff: Dictionary) -> void:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	paused_for_roll = false
 	hud.hide_big()
+	net.send_event("hide_big")
 	start_area()
 
 func _role_swap() -> void:
@@ -411,6 +578,7 @@ func _host_process(delta: float) -> void:
 		start_run()
 		return
 	if not over and not paused_for_roll:
+		_vein_tick(delta)
 		if time_left > 0.0:
 			time_left -= delta
 		else:
@@ -499,7 +667,7 @@ func _update_camera(delta: float) -> void:
 	if players.is_empty():
 		return
 	var p = players[controlled]
-	var focus: Vector3 = p.global_position.lerp(Vector3(0, 0, -2), 0.35)
+	var focus: Vector3 = p.global_position.lerp(area_center(), 0.35)
 	var want = focus + Vector3(0, 13, 11)
 	cam.global_position = cam.global_position.lerp(want, clampf(delta * 4.0, 0.0, 1.0)) if cam.global_position != Vector3.ZERO else want
 	shake = maxf(0.0, shake - delta)
@@ -748,7 +916,7 @@ func make_snapshot() -> Dictionary:
 			it.is_free() and it.station == null]
 	var nodes = []
 	for n in area_nodes:
-		nodes.append([n.ore, n.hits])
+		nodes.append([n.node_id, n.ore, n.hits, n.chunks, n.global_position.x, n.global_position.z])
 	return {
 		"p": ps, "i": its, "n": nodes,
 		"g": [door_index, time_left, area_time, peak_time, over, paused_for_roll, mods],
@@ -825,11 +993,24 @@ func apply_snapshot(s: Dictionary) -> void:
 		p.sel = d[5]
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
-	var nodes: Array = s["n"]
-	for i in mini(nodes.size(), area_nodes.size()):
-		if area_nodes[i].ore != nodes[i][0]:
-			area_nodes[i].set_ore(nodes[i][0])
-		area_nodes[i].hits = nodes[i][1]
+	# Veins: match by id, add new ones, crumble the ones the host no longer has.
+	var by_id = {}
+	for n in area_nodes:
+		by_id[n.node_id] = n
+	var keep = {}
+	for nd in s["n"]:
+		var n = by_id.get(nd[0])
+		if n == null:
+			n = _add_node([nd[0], nd[1], nd[4], nd[5], nd[3]])
+		keep[nd[0]] = true
+		if n.ore != nd[1]:
+			n.set_ore(nd[1])
+		n.hits = nd[2]
+		if n.chunks != nd[3]:
+			n.set_chunks(nd[3])
+	for n in area_nodes.duplicate():
+		if not keep.has(n.node_id):
+			remove_node(n)
 	var f: Array = s["f"]
 	furnace.heat = f[0]
 	furnace.contents = f[1]
@@ -873,10 +1054,12 @@ func apply_event(kind: String, data) -> void:
 			lightning._bolt(data)
 			flash()
 		"area":
-			_clear_nodes()
+			if data["door"] == 0:
+				for k in areas.keys():
+					_free_area(k)
+				door = null
+			if not areas.has(data["door"]) or data["door"] == 0:
+				build_area(data)
 			door_index = data["door"]
-			for n in data["nodes"]:
-				area_nodes.append(_station("node", Vector3(n[1], 0.6, n[2]), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[n[0]], {"ore": n[0]}))
 			if data["rod"] and rod == null:
-				rod = _station("rod", Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8))
-			hud.hide_big()
+				rod = _station("rod", area_origin(door_index) + Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8), {}, areas.get(door_index))

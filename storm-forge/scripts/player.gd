@@ -34,6 +34,11 @@ var in_dive = false                 # one-shot, cleared when used
 var puppet = false                  # client side: follow snapshots
 var net_pos = Vector3.ZERO
 var net_rot = Vector3.ZERO
+var anim: AnimationPlayer = null    # set when a rigged model is loaded
+var anim_names = {}                 # state -> clip name
+var anim_state = ""
+var last_pos = Vector3.ZERO
+var has_model = false
 
 func setup(p_main: Node, p_idx: int) -> void:
 	main = p_main
@@ -53,10 +58,32 @@ func setup(p_main: Node, p_idx: int) -> void:
 	visual = Node3D.new()
 	visual.position.y = 0.85
 	add_child(visual)
-	var model = SF.try_model("smith")
+	var model = SF.try_model("smith_" + String(role["name"]).to_lower())
+	if model == null:
+		model = SF.try_model("smith")
 	if model:
+		has_model = true
 		model.position.y = -0.85
+		model.rotation.y = SF.SMITH_MODEL_YAW
+		model.scale = Vector3.ONE * SF.SMITH_MODEL_SCALE
 		visual.add_child(model)
+		var players_found = model.find_children("*", "AnimationPlayer", true, false)
+		if not players_found.is_empty():
+			anim = players_found[0]
+			var clips = anim.get_animation_list()
+			for state in SF.ANIM_WORDS:
+				for word in SF.ANIM_WORDS[state]:
+					if anim_names.has(state):
+						break
+					for c in clips:
+						if word in String(c).to_lower():
+							anim_names[state] = c
+							break
+			for loop_state in ["idle", "walk", "run"]:
+				if anim_names.has(loop_state):
+					var a = anim.get_animation(anim_names[loop_state])
+					if a:
+						a.loop_mode = Animation.LOOP_LINEAR
 	else:
 		visual.add_child(Build.box(Vector3(0.7, 1.0, 0.45), role["color"]))
 		head = Build.box(Vector3(0.45, 0.45, 0.45), Color(0.95, 0.8, 0.65))
@@ -137,8 +164,30 @@ func clear_slots() -> void:
 func hand_position() -> Vector3:
 	return global_position + Vector3(0, 1.1, 0) + facing * 0.65
 
+## Pick the animation for what the smith is doing right now.
+func _animate(delta: float) -> void:
+	var moved = Vector2(global_position.x - last_pos.x, global_position.z - last_pos.z).length() / maxf(delta, 0.001)
+	last_pos = global_position
+	if anim == null:
+		return
+	var state = "idle"
+	if stun > 0.0:
+		state = "stun"
+	elif dive_t > 0.0:
+		state = "dive"
+	elif moved > SF.MOVE_SPEED * 1.15:
+		state = "run"
+	elif moved > 0.4:
+		state = "walk"
+	if not anim_names.has(state):
+		state = "walk" if state == "run" and anim_names.has("walk") else "idle"
+	if state != anim_state and anim_names.has(state):
+		anim_state = state
+		anim.play(anim_names[state], 0.15)
+
 func _physics_process(delta: float) -> void:
 	ring.visible = controlled
+	_animate(delta)
 	if puppet:
 		global_position = global_position.lerp(net_pos, clampf(delta * 15.0, 0.0, 1.0))
 		visual.rotation = net_rot

@@ -99,3 +99,4 @@ func _client() -> void:
 	check(await wait_until(func(): return main.items_by_id.size() == 4, 6.0), "client sees it disappear")
 	check(await wait_until(func(): return main.paused_for_roll, 6.0), "client sees the buff/debuff roll")
 	check(await wait_until(func(): return main.door_index == 1 and not main.paused_for_roll, 8.0), "client moves on to door 2")
+	check(main.furnace.global_position.z < -14.0 and main.area_nodes.size() > 0, "client built the second area past the old door")
