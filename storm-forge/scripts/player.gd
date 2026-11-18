@@ -53,7 +53,16 @@ var last_pos = Vector3.ZERO
 var has_model = false
 var skel: Skeleton3D = null
 var hand_bone = -1
-var act_t = 0.0                     # a one-shot action animation is playing
+var act_phase = ""                  # one-shot action: "", wind, recoil, settle
+var act_def = {}
+var act_cb = Callable()
+var act_clock = 0.0
+var act_fired = false
+var jolt = 0.0                      # 1 on impact, fades: a goofy shudder
+var buzz_t = 0.0                    # electrocuted jitter
+var bounced = false                 # first landing after a lightning launch bounces
+var spin_dir = 1.0
+var was_stun = false
 var act_name = ""                   # last action, sent to clients so puppets play it too
 var act_seq = 0
 var act_seen = 0
@@ -229,15 +238,10 @@ func _animate(delta: float) -> void:
 		return
 	if act_seq != act_seen:
 		act_seen = act_seq
-		var clip = SF.ACTION_ANIMS.get(act_name, "")
-		if anim.has_animation(clip) and stun <= 0.0:
-			anim.play(clip, 0.08, 1.4)
-			act_t = anim.get_animation(clip).length / 1.4
-			anim_state = "act"
-	if act_t > 0.0 and stun <= 0.0:
-		act_t -= delta
-		if act_t > 0.0 and not flop:
-			return
+		if puppet:
+			_start_act(act_name)
+	if act_phase != "" and stun <= 0.0:
+		return
 	var state = "idle"
 	if stun > 0.0:
 		state = "stun"
@@ -263,12 +267,15 @@ func airborne() -> bool:
 func _goof(delta: float, moved: float) -> void:
 	var g: Dictionary = SF.GOOFY
 	var air = airborne()
+	if puppet and stun > 0.0 and not was_stun:
+		buzz_t = SF.ZAP["buzz_time"]
+	was_stun = stun > 0.0
 	if puppet and was_air and not air:
 		land_sq = 0.3
 		puff(6, 1.0)
 	was_air = air
 	var want = 0.0
-	if stun <= 0.0 and act_t <= 0.0 and (moved > 0.4 or air or flop):
+	if stun <= 0.0 and act_phase == "" and (moved > 0.4 or air or flop):
 		want = 1.0 if (air or flop) else clampf(moved / SF.MOVE_SPEED, 0.0, 1.3)
 	goof = move_toward(goof, want, delta * 6.0)
 	var before = floorf(step_phase)
@@ -276,12 +283,18 @@ func _goof(delta: float, moved: float) -> void:
 		step_phase += moved * delta * g["steps_per_meter"]
 		if floorf(step_phase) != before and moved > SF.MOVE_SPEED * 1.15:
 			puff(2, 0.5)
-	land_sq = move_toward(land_sq, 0.0, delta * 2.5)
+	if act_phase == "wind":
+		land_sq = move_toward(land_sq, -0.14, delta * 0.6)   # stretch tall winding up
+	else:
+		land_sq = move_toward(land_sq, 0.0, delta * 2.5)
+	jolt = move_toward(jolt, 0.0, delta * 3.0)
+	buzz_t = maxf(0.0, buzz_t - delta)
 	if goofy:
 		goofy.amount = minf(goof, 1.0)
 		# In the air the arms flap fast like little wings; in a flop they spread wide.
 		goofy.phase = step_phase if not air else goofy.phase + delta * (2.0 if flop else 7.0)
 	if stun > 0.0:
+		_zapped_look(delta, air)
 		return
 	var bounce = 0.0 if (air or flop) else absf(sin(step_phase * PI))   # 0 at each footfall
 	visual.position.y = 0.85 + bounce * g["hop"] * goof
@@ -289,6 +302,9 @@ func _goof(delta: float, moved: float) -> void:
 	if air and not flop:
 		sq += clampf(velocity.y / 30.0, -0.1, 0.15)   # stretch going up
 	visual.scale = Vector3(1.0 - sq * 0.5, 1.0 + sq, 1.0 - sq * 0.5)
+	# Impact shudder: the whole smith wobbles from the blow.
+	visual.position.x = sin(jolt * 40.0) * 0.05 * jolt
+	visual.position.z = 0.0
 	if puppet:
 		return
 	var bank = clampf(-turn_speed * g["bank"], -0.5, 0.5)
@@ -300,51 +316,43 @@ func _goof(delta: float, moved: float) -> void:
 		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
 	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
 
+## Flying from a lightning strike: tumble in the air, buzz with electricity, flail.
+func _zapped_look(delta: float, air: bool) -> void:
+	var z: Dictionary = SF.ZAP
+	if buzz_t > 0.0:
+		var b = z["buzz"] * (buzz_t / z["buzz_time"])
+		visual.position = Vector3(randf_range(-b, b), 0.85 + randf_range(-b, b), randf_range(-b, b))
+		var k = 1.0 + randf_range(-0.08, 0.08)
+		visual.scale = Vector3(k, 2.0 - k, k)
+	else:
+		visual.position = Vector3(0, 0.85, 0)
+		visual.scale = Vector3.ONE
+	if goofy:
+		goofy.amount = 1.0 if air else 0.6
+		goofy.phase += delta * (14.0 if air else 3.0)   # arms flail
+	if puppet:
+		return
+	if air:
+		visual.rotation.x += delta * z["spin"] * spin_dir
+		visual.rotation.z = lerp_angle(visual.rotation.z, 0.4 * spin_dir, delta * 4.0)
+	else:
+		# Splat flat on your back until you recover.
+		visual.rotation.x = lerp_angle(visual.rotation.x, 1.45, clampf(delta * 10.0, 0.0, 1.0))
+		visual.rotation.z = lerp_angle(visual.rotation.z, 0.0, clampf(delta * 10.0, 0.0, 1.0))
+
 ## A little puff of dust at the feet (purely visual).
 func puff(count: int, size: float) -> void:
-	if not is_inside_tree():
-		return
-	var pa = CPUParticles3D.new()
-	var mesh = SphereMesh.new()
-	mesh.radius = 0.09 * size
-	mesh.height = 0.18 * size
-	var mat = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.92, 0.9, 0.85, 0.8)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.vertex_color_use_as_albedo = true
-	mesh.material = mat
-	pa.mesh = mesh
-	pa.one_shot = true
-	pa.emitting = true
-	pa.amount = maxi(count, 1)
-	pa.lifetime = 0.45
-	pa.explosiveness = 1.0
-	pa.direction = Vector3(0, 1, 0)
-	pa.spread = 80.0
-	pa.initial_velocity_min = 0.8 * size
-	pa.initial_velocity_max = 2.0 * size
-	pa.gravity = Vector3(0, 0.6, 0)
-	pa.damping_min = 3.0
-	pa.damping_max = 5.0
-	var curve = Curve.new()
-	curve.add_point(Vector2(0, 1))
-	curve.add_point(Vector2(1, 0))
-	pa.scale_amount_curve = curve
-	var grad = Gradient.new()
-	grad.set_color(0, Color(1, 1, 1, 0.9))
-	grad.set_color(1, Color(1, 1, 1, 0))
-	pa.color_ramp = grad
-	main.add_child(pa)
-	pa.global_position = global_position + Vector3(0, 0.1, 0)
-	pa.finished.connect(pa.queue_free)
+	Fx.dust(main, global_position + Vector3(0, 0.1, 0), count, size)
 
 ## Advance the animation ourselves so the goofy arms go on after it, every frame.
 func _process(delta: float) -> void:
 	if anim and anim.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL:
 		anim.advance(delta)
+		_act_tick(delta)
 		if goofy:
 			goofy.apply()
+	elif act_phase != "":
+		_act_tick(delta)
 	# Snap the held item to the hand after the final pose, so it never lags or drifts.
 	_place_in_hand()
 
@@ -359,10 +367,93 @@ func _place_in_hand() -> void:
 	if it.tongs_load and is_instance_valid(it.tongs_load):
 		it.tongs_load.global_position = it.global_position - it.global_transform.basis.z * 0.55
 
-## Play a one-shot action (mining swing, hammer blow, throw...). Host side; clients copy it.
-func act(what: String) -> void:
+## Start a one-shot action (mining swing, hammer blow, throw...). on_impact runs at the
+## moment the tool makes contact. Returns false if you're still busy with the last one.
+## Host side; clients see act_seq change and play the same swing (without the effect).
+func act(what: String, on_impact: Callable = Callable()) -> bool:
+	if busy() or stun > 0.0:
+		return false
 	act_name = what
 	act_seq += 1
+	act_seen = act_seq
+	act_cb = on_impact
+	_start_act(what)
+	return true
+
+func busy() -> bool:
+	return act_phase != ""
+
+func _start_act(what: String) -> void:
+	act_def = SF.ACTIONS.get(what, {})
+	act_fired = false
+	if anim == null or act_def.is_empty() or not anim.has_animation(act_def["clip"]):
+		# No model: just a short pause, then the effect.
+		act_phase = "wind"
+		act_clock = 0.25
+		return
+	anim.speed_scale = 1.0
+	anim.play(act_def["clip"], 0.06, act_def["speed"])
+	anim.seek(0.0, true)
+	anim_state = "act"
+	act_phase = "wind"
+	act_clock = act_def["impact"] / act_def["speed"] + 0.5   # safety net
+
+## Wind up, hit, bounce back, settle. Runs every frame after the animation advances.
+func _act_tick(delta: float) -> void:
+	if act_phase == "":
+		return
+	if stun > 0.0:
+		_end_act()
+		return
+	act_clock -= delta
+	match act_phase:
+		"wind":
+			var at_impact = act_clock <= 0.0
+			if anim and not act_def.is_empty() and anim.current_animation == act_def["clip"]:
+				at_impact = at_impact or anim.current_animation_position >= act_def["impact"]
+			if at_impact:
+				_impact()
+				if anim and act_def.get("recoil", 0.0) > 0.0:
+					act_phase = "recoil"
+					act_clock = act_def["recoil"]
+					anim.speed_scale = -0.8   # the clip runs backwards: the tool bounces off
+				else:
+					act_phase = "settle"
+					act_clock = act_def.get("settle", 0.15)
+					_back_to_idle()
+		"recoil":
+			if act_clock <= 0.0:
+				anim.speed_scale = 1.0
+				act_phase = "settle"
+				act_clock = act_def.get("settle", 0.2)
+				_back_to_idle()
+		"settle":
+			if act_clock <= 0.0:
+				_end_act()
+
+func _impact() -> void:
+	act_fired = true
+	land_sq = act_def.get("squash", 0.15)      # goofy squash as the blow lands
+	jolt = 1.0
+	# Effect on screen first (aimed at what's there now), then the real result.
+	if main and main.has_method("action_fx"):
+		main.action_fx(self, act_name)
+	if act_cb.is_valid():
+		var cb = act_cb
+		act_cb = Callable()
+		cb.call()
+
+func _back_to_idle() -> void:
+	if anim and anim_names.has("idle"):
+		anim.play(anim_names["idle"], act_def.get("settle", 0.2), 1.0)
+		anim_state = "idle"
+
+func _end_act() -> void:
+	if anim:
+		anim.speed_scale = 1.0
+	act_phase = ""
+	act_cb = Callable()
+	anim_state = ""
 
 ## Where held things go: the model's right-hand slot, or a spot in front of the body.
 func hand_transform() -> Transform3D:
@@ -379,7 +470,7 @@ func _physics_process(delta: float) -> void:
 		visual.rotation = net_rot
 		return
 	if not is_on_floor() and stun > 0.0:
-		velocity.y -= SF.MOVE["gravity_down"] * delta
+		velocity.y -= SF.ZAP["gravity"] * delta
 	dive_cd = maxf(0.0, dive_cd - delta)
 	_update_held(delta)
 
@@ -388,9 +479,18 @@ func _physics_process(delta: float) -> void:
 		if not has_model:
 			visual.rotation.z += delta * 14.0
 			visual.rotation.x = 1.2
-		velocity.x = move_toward(velocity.x, 0.0, 12.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, 12.0 * delta)
+		if is_on_floor():
+			velocity.x = move_toward(velocity.x, 0.0, 12.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, 12.0 * delta)
+		var fall = velocity.y
+		var was_floor = is_on_floor()
 		move_and_slide()
+		if is_on_floor() and not was_floor and fall < -2.0:
+			puff(10, 1.2)
+			main.shake = maxf(main.shake, 0.15) if controlled else main.shake
+			if not bounced:
+				bounced = true
+				velocity.y = -fall * SF.ZAP["bounce"]   # boing
 		if stun <= 0.0:
 			_recover()
 		return
@@ -399,9 +499,11 @@ func _physics_process(delta: float) -> void:
 	var sprint = false
 	var grounded = is_on_floor()
 	var m: Dictionary = SF.MOVE
-	if not main.paused_for_roll:
+	if not main.paused_for_roll and not busy():
 		dir = Vector3(in_move.x, 0, in_move.y).limit_length(1.0)
 		sprint = in_sprint
+	if busy():
+		in_dive = false   # planted mid-swing: no jumping out of it
 	# Coyote time and jump buffer: forgiving, so jumps never feel eaten.
 	coyote_t = m["coyote"] if grounded else maxf(0.0, coyote_t - delta)
 	if in_dive:
@@ -573,10 +675,19 @@ func zap() -> void:
 	var stun_time = SF.STUN_TIME * (0.5 ** main.mod("second_wind"))
 	stun = stun_time
 	flop = false
-	velocity = Vector3(randf_range(-4, 4), 7.0, randf_range(-4, 4))
-	# Everything you carry goes flying.
+	_end_act()
+	# You fly one way, everything you carry flies the other.
+	var z: Dictionary = SF.ZAP
+	var away = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
+	if away.length() < 0.1:
+		away = -facing
+	away = away.normalized()
+	velocity = away * z["launch_out"] + Vector3.UP * z["launch_up"]
+	buzz_t = z["buzz_time"]
+	bounced = false
+	spin_dir = -1.0 if randf() < 0.5 else 1.0
 	for it in items():
-		var fling = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * randf_range(5.0, 8.0) + Vector3.UP * 6.0
+		var fling = (-away + Vector3(randf_range(-0.5, 0.5), 0, randf_range(-0.5, 0.5))).normalized() * randf_range(5.0, 8.0) + Vector3.UP * 6.0
 		drop_item(it, fling)
 		if it.kind == "tool":
 			lost_tool = it
@@ -584,6 +695,9 @@ func zap() -> void:
 func _recover() -> void:
 	stun = 0.0
 	visual.rotation = Vector3(0, atan2(-facing.x, -facing.z), 0)
+	visual.position = Vector3(0, 0.85, 0)
+	visual.scale = Vector3.ONE
+	land_sq = -0.25   # spring back up
 	if lost_tool and is_instance_valid(lost_tool) and main.mod("magnet") > 0 and lost_tool.is_free() and slots[0] == null:
 		pick_up(lost_tool)
 		main.toast("Magnet Gloves: tool snapped back")

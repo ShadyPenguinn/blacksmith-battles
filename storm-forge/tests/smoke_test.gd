@@ -48,6 +48,27 @@ func _run() -> void:
 	var ores = items_of("ore")
 	check(ores.size() == 1, "three pickaxe hits drop an ore chunk")
 
+	# One press = one swing, and the hit only lands when the pickaxe makes contact.
+	var node2 = get_nodes_in_group("node").filter(func(n): return n != node and not n.dead)[0]
+	put(miner, node2.global_position + Vector3(0, 0, 1.2))
+	await frames(2)
+	var hits_before = node2.hits
+	main.do_action(miner, "use", {})
+	check(miner.busy(), "pressing use starts a swing")
+	check(node2.hits == hits_before, "the ore isn't hit before the pickaxe lands")
+	main.do_action(miner, "use", {})
+	main.do_action(miner, "use", {})
+	await create_timer(1.6).timeout
+	check(node2.hits == hits_before + 1, "one press is one hit, even when mashed")
+	check(not miner.busy(), "the swing bounces back and finishes")
+	var spot = miner.global_position
+	miner.in_move = Vector2(1, 0)
+	main.do_action(miner, "use", {})
+	await frames(20)
+	check(miner.global_position.distance_to(spot) < 0.3, "you can't walk mid-swing")
+	miner.in_move = Vector2.ZERO
+	await create_timer(1.6).timeout
+
 	# Pocket the ore (pickaxe stays in hand), carry it to the furnace.
 	put(miner, ores[0].global_position)
 	await frames(2)
@@ -215,12 +236,17 @@ func _run() -> void:
 	put(miner, Vector3(-3, 0, 4))
 	await frames(2)
 	var tool_before = miner.held
+	var struck_at = miner.global_position
 	main.lightning.target = miner
 	main.lightning.strike(miner.global_position)
 	check(miner.stun > 0.0, "lightning stuns the smith")
 	check(miner.held == null and tool_before != null and tool_before.is_free(), "lightning knocks the tool loose")
 	await frames(60)
 	check(tool_before.global_position.distance_to(miner.global_position) > 1.0, "the tool flies away")
+	check(Vector2(miner.global_position.x - struck_at.x, miner.global_position.z - struck_at.z).length() > 2.0, "the smith goes flying")
+	var fly = miner.global_position - struck_at
+	var toolfly = tool_before.global_position - struck_at
+	check(Vector2(fly.x, fly.z).dot(Vector2(toolfly.x, toolfly.z)) < 0.0, "the tool flies the opposite way")
 
 	# Metal raises strike odds.
 	var w_empty = 1.0
