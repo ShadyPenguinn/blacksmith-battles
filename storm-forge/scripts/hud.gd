@@ -2,6 +2,7 @@ extends CanvasLayer
 ## On-screen text: timer, door, buffs and debuffs, hints, toasts, the slot-machine roll.
 
 var main: Node
+const CONTROLS := "WASD move   Shift sprint   Space dive   E / right-click grab, place, drop   F / click use   Q throw   1-4 switch smith   L call lightning   N skip door"
 var top_left: Label
 var top_right: Label
 var bottom: Label
@@ -17,6 +18,8 @@ var action_t = 0.0
 var roll_t = -1.0
 var roll_buff: Dictionary
 var roll_debuff: Dictionary
+var menu: PanelContainer
+var menu_box: VBoxContainer
 
 func setup(p_main: Node) -> void:
 	main = p_main
@@ -40,7 +43,7 @@ func setup(p_main: Node) -> void:
 	controls = _label(Vector2(20, 0), 16)
 	_place(controls, 0.0, 1.0, 20, -40, 1560, 26)
 	controls.modulate = Color(1, 1, 1, 0.75)
-	controls.text = "WASD move   Shift sprint   Space dive   E / right-click grab, place, drop   F / click use   Q throw   1-4 switch smith   L call lightning   N skip door"
+	controls.text = CONTROLS
 	toast_label = _label(Vector2(0, 0), 30)
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_place(toast_label, 0.5, 0.0, -500, 90, 1000, 44)
@@ -85,6 +88,68 @@ func _label(pos: Vector2, size: int) -> Label:
 	add_child(l)
 	return l
 
+# ---------------------------------------------------------------- menu and lobby
+
+func _menu_panel() -> void:
+	if menu:
+		menu.queue_free()
+	menu = PanelContainer.new()
+	_place(menu, 0.5, 0.5, -260, -190, 520, 380)
+	menu_box = VBoxContainer.new()
+	menu_box.add_theme_constant_override("separation", 14)
+	menu.add_child(menu_box)
+	add_child(menu)
+
+func _menu_label(text: String, size: int) -> Label:
+	var l = Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	menu_box.add_child(l)
+	return l
+
+func _menu_button(text: String, cb: Callable) -> Button:
+	var b = Button.new()
+	b.text = text
+	b.add_theme_font_size_override("font_size", 26)
+	b.pressed.connect(cb)
+	menu_box.add_child(b)
+	return b
+
+func show_menu() -> void:
+	_menu_panel()
+	_menu_label("Storm Forge", 44)
+	_menu_button("Play offline (switch between 4 smiths)", _on_offline)
+	_menu_button("Host a game", func(): main.menu_host())
+	var ip = LineEdit.new()
+	ip.text = main.join_ip
+	ip.placeholder_text = "Host IP address"
+	ip.add_theme_font_size_override("font_size", 24)
+	menu_box.add_child(ip)
+	_menu_button("Join", func(): main.menu_join(ip.text.strip_edges()))
+	_menu_label("Type the host's IP above. Same Wi-Fi works,\nor the host forwards port %d." % 7777, 18)
+
+func show_lobby(title: String, sub: String, can_start: bool) -> void:
+	_menu_panel()
+	_menu_label(title, 40)
+	_menu_label(sub, 24)
+	if can_start:
+		_menu_button("Start", _on_start)
+
+func _on_offline() -> void:
+	_close_menu()
+	main.menu_offline()
+
+func _on_start() -> void:
+	_close_menu()
+	main.net.host_start()
+
+func _close_menu() -> void:
+	if menu:
+		menu.queue_free()
+		menu = null
+
 func refresh() -> void:
 	var dt = get_process_delta_time()
 	var cfg: Dictionary = SF.DOORS[main.door_index]
@@ -105,8 +170,12 @@ func refresh() -> void:
 		if main.mod(d["id"]) > 0:
 			lines.append("- %s x%d: %s" % [d["name"], main.mod(d["id"]), d["desc"]])
 	top_right.text = "\n".join(lines)
+	if main.players.is_empty():
+		return
 	var p = main.players[main.controlled]
 	bottom.text = "You: %s   %s" % [p.role["name"], main.hint(p)]
+	if main.is_online():
+		controls.text = CONTROLS.replace("   1-4 switch smith", "")
 	toast_t = maxf(0.0, toast_t - dt)
 	toast_label.modulate.a = clampf(toast_t, 0.0, 1.0)
 	action_t = maxf(0.0, action_t - dt)
@@ -136,11 +205,13 @@ func show_roll(buff: Dictionary, debuff: Dictionary) -> void:
 	big.visible = true
 
 func show_big(title: String, sub: String) -> void:
+	_close_menu()
 	roll_t = -1.0
 	big_title.text = title
 	big_sub.text = sub
 	big.visible = true
 
 func hide_big() -> void:
+	_close_menu()
 	roll_t = -1.0
 	big.visible = false

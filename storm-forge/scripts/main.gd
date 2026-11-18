@@ -6,8 +6,9 @@ const StationScript := preload("res://scripts/station.gd")
 const PlayerScript := preload("res://scripts/player.gd")
 const LightningScript := preload("res://scripts/lightning.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const NetScript := preload("res://scripts/net.gd")
 
-const PLAYER_COUNT := 4  # offline graybox: four smiths, you control one at a time
+const TOOL_SPOTS := [Vector3(0, 0.5, 4), Vector3(-4, 0.5, -0.8), Vector3(-2, 0.5, -1.4), Vector3(6.5, 0.5, -1.6)]
 const NODE_SLOTS := [Vector2(-8, 6), Vector2(8, 6), Vector2(-4.5, 8.5), Vector2(4.5, 8.5),
 	Vector2(0, 9.5), Vector2(-9, 2.5), Vector2(9, 2.5), Vector2(-1.5, 6), Vector2(1.5, 6)]
 
@@ -21,6 +22,14 @@ var mods = {}
 var players: Array = []
 var controlled = 0
 var toasts: Array[String] = []
+var start_mode = "menu"     # menu, offline, host, client (tests set this before adding the scene)
+var join_ip = "127.0.0.1"
+var player_count = 4        # offline: four smiths you switch between; online: one per player
+var run_started = false
+var net: Node
+var next_item_id = 1
+var items_by_id = {}
+var area_nodes: Array = []
 
 var lightning: Node3D
 var door: StaticBody3D
@@ -42,7 +51,64 @@ func _ready() -> void:
 	randomize()
 	_setup_input()
 	_build_world()
-	start_run()
+	net = Node.new()
+	net.name = "Net"
+	net.set_script(NetScript)
+	add_child(net)
+	net.main = self
+	_choose_start()
+
+## Command line: -- --offline | --host [--autostart N] | --join IP. Otherwise show the menu.
+func _choose_start() -> void:
+	var args = OS.get_cmdline_user_args()
+	if start_mode == "menu":
+		if "--offline" in args:
+			start_mode = "offline"
+		elif "--host" in args:
+			start_mode = "host"
+		elif "--join" in args:
+			start_mode = "client"
+			var i = args.find("--join")
+			if i + 1 < args.size():
+				join_ip = args[i + 1]
+	if "--autostart" in args:
+		var j = args.find("--autostart")
+		if j + 1 < args.size():
+			net.autostart = int(args[j + 1])
+	match start_mode:
+		"offline":
+			menu_offline()
+		"host":
+			menu_host()
+		"client":
+			menu_join(join_ip)
+		_:
+			hud.show_menu()
+
+func menu_offline() -> void:
+	start_run(4)
+
+func menu_host() -> void:
+	var err = net.host()
+	if err != OK:
+		hud.show_big("Couldn't host", "Port %d may be in use (error %d)." % [net.PORT, err])
+		return
+	hud.show_lobby("Hosting", net.lobby_text(), true)
+	if net.autostart == 1:
+		net.host_start()
+
+func menu_join(ip: String) -> void:
+	var err = net.join(ip)
+	if err != OK:
+		hud.show_big("Couldn't connect", "Error %d" % err)
+		return
+	hud.show_lobby("Joining", "Connecting to %s..." % ip, false)
+
+func is_client() -> bool:
+	return net != null and net.mode == "client"
+
+func is_online() -> bool:
+	return net != null and net.mode != "offline"
 
 # ---------------------------------------------------------------- setup
 
@@ -176,7 +242,10 @@ func _rain() -> void:
 
 # ---------------------------------------------------------------- run flow
 
-func start_run() -> void:
+func start_run(n: int = -1) -> void:
+	if n > 0:
+		player_count = n
+	run_started = true
 	over = false
 	paused_for_roll = false
 	door_index = 0
@@ -186,28 +255,35 @@ func start_run() -> void:
 		rod = null
 	for it in get_tree().get_nodes_in_group("item"):
 		despawn(it)
-	if players.is_empty():
-		for i in PLAYER_COUNT:
-			var p = CharacterBody3D.new()
-			p.set_script(PlayerScript)
-			p.setup(self, i)
-			add_child(p)
-			players.append(p)
-	for i in players.size():
-		var p = players[i]
-		p.held = null
-		p.stun = 0.0
-		p.set_big_head(1.0)
-		p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
-		p.velocity = Vector3.ZERO
-		var t = spawn_item("tool", p.global_position + Vector3.UP, {"tool": SF.ROLES[i]["tool"]})
+	_make_players(player_count)
+	for i in SF.ROLES.size():
+		var t = spawn_item("tool", TOOL_SPOTS[i], {"tool": SF.ROLES[i]["tool"]})
 		t.owner_idx = i
-		p.pick_up(t)
+		if i < players.size():
+			var p = players[i]
+			p.held = null
+			p.stun = 0.0
+			p.set_big_head(1.0)
+			p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
+			p.velocity = Vector3.ZERO
+			p.pick_up(t)
 	furnace.contents.clear()
 	furnace.heat = 0.0
-	set_controlled(0)
+	set_controlled(net.my_smith if is_online() else 0)
 	hud.hide_big()
+	net.send_event("restart")
 	start_area()
+
+func _make_players(n: int) -> void:
+	while players.size() > n:
+		players.pop_back().queue_free()
+	while players.size() < n:
+		var p = CharacterBody3D.new()
+		p.set_script(PlayerScript)
+		p.setup(self, players.size())
+		add_child(p)
+		p.puppet = is_client()
+		players.append(p)
 
 func start_area() -> void:
 	var cfg: Dictionary = SF.DOORS[door_index]
@@ -217,23 +293,36 @@ func start_area() -> void:
 	area_time = maxf(60.0, SF.AREA_TIME + 30.0 * (mod("long_fuse") - mod("short_fuse")))
 	time_left = area_time
 	peak_time = 0.0
-	for n in get_tree().get_nodes_in_group("node"):
-		n.remove_from_group("node")
-		n.remove_from_group("station")
-		n.queue_free()
+	_clear_nodes()
 	var slot = 0
 	for ore in cfg["nodes"]:
 		for k in cfg["nodes"][ore]:
 			if slot >= NODE_SLOTS.size():
 				break
 			var s: Vector2 = NODE_SLOTS[slot]
-			_station("node", Vector3(s.x, 0.6, s.y), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[ore], {"ore": ore})
+			area_nodes.append(_station("node", Vector3(s.x, 0.6, s.y), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[ore], {"ore": ore}))
 			slot += 1
 	if mod("rod") > 0 and rod == null:
 		rod = _station("rod", Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8))
 	lightning.reset_area()
 	env.background_color = cfg["sky"]
+	send_area()
 	toast("Door %d: %s. Break it before the storm peaks!" % [door_index + 1, cfg["area"]])
+
+func _clear_nodes() -> void:
+	for n in area_nodes:
+		if is_instance_valid(n):
+			n.remove_from_group("node")
+			n.remove_from_group("station")
+			n.queue_free()
+	area_nodes.clear()
+
+## Host: tell clients which ore nodes this area has.
+func send_area() -> void:
+	var list = []
+	for n in area_nodes:
+		list.append([n.ore, n.global_position.x, n.global_position.z])
+	net.send_event("area", {"door": door_index, "nodes": list, "rod": rod != null})
 
 func door_broken() -> void:
 	if paused_for_roll or over:
@@ -242,12 +331,13 @@ func door_broken() -> void:
 	if door_index >= SF.DOORS.size():
 		door_index = SF.DOORS.size() - 1
 		over = true
-		hud.show_big("You broke the Storm Gate!", "All 8 doors down. Press R to play again.")
+		show_big("You broke the Storm Gate!", "All 8 doors down. The host presses R to play again.")
 		return
 	paused_for_roll = true
 	var buff: Dictionary = SF.BUFFS.pick_random()
 	var debuff: Dictionary = SF.DEBUFFS.pick_random()
 	hud.show_roll(buff, debuff)
+	net.send_event("roll", [buff, debuff])
 	get_tree().create_timer(3.0).timeout.connect(_finish_roll.bind(buff, debuff))
 
 func _finish_roll(buff: Dictionary, debuff: Dictionary) -> void:
@@ -277,14 +367,18 @@ func _role_swap() -> void:
 
 func game_over() -> void:
 	over = true
-	hud.show_big("The storm took the forge", "Doors broken: %d. Press R to try again." % door_index)
+	show_big("The storm took the forge", "Doors broken: %d. The host presses R to try again." % door_index)
+
+func show_big(title: String, sub: String) -> void:
+	hud.show_big(title, sub)
+	net.send_event("big", [title, sub])
 
 func mod(id: String) -> int:
 	return mods.get(id, 0)
 
 ## Scales door HP and lightning for smaller groups. Offline graybox always has 4.
 func player_scale(what: String) -> float:
-	var n = PLAYER_COUNT
+	var n = player_count
 	if what == "door":
 		return {1: 0.45, 2: 0.6, 3: 0.8, 4: 1.0}.get(n, 1.0)
 	return {1: 0.6, 2: 0.7, 3: 0.85, 4: 1.0}.get(n, 1.0)
@@ -292,16 +386,12 @@ func player_scale(what: String) -> float:
 # ---------------------------------------------------------------- per frame
 
 func _process(delta: float) -> void:
-	if Input.is_action_just_pressed("restart") and over:
-		start_run()
-	if not over and not paused_for_roll:
-		if time_left > 0.0:
-			time_left -= delta
-		else:
-			peak_time += delta
-			if peak_time >= SF.PEAK_GRACE:
-				game_over()
-		_handle_input()
+	if not run_started:
+		return
+	if is_client():
+		_client_input()
+	else:
+		_host_process(delta)
 	_update_camera(delta)
 	flash_t = maxf(0.0, flash_t - delta)
 	env.ambient_light_energy = 0.6 + flash_t * 16.0
@@ -310,31 +400,89 @@ func _process(delta: float) -> void:
 	env.background_color = sky.lerp(Color(0.08, 0.08, 0.12), _storm_progress()).lerp(Color(0.9, 0.92, 1.0), clampf(flash_t * 3.0, 0.0, 1.0))
 	hud.refresh()
 
+func _host_process(delta: float) -> void:
+	if Input.is_action_just_pressed("restart") and over:
+		start_run()
+		return
+	if not over and not paused_for_roll:
+		if time_left > 0.0:
+			time_left -= delta
+		else:
+			peak_time += delta
+			if peak_time >= SF.PEAK_GRACE:
+				game_over()
+		_handle_input()
+
 func _storm_progress() -> float:
 	return clampf(1.0 - time_left / area_time, 0.0, 1.0)
 
+## Local keyboard for the smith you control (host or offline).
 func _handle_input() -> void:
-	for i in 4:
-		if Input.is_action_just_pressed("smith_%d" % (i + 1)):
-			set_controlled(i)
+	if not is_online():
+		for i in players.size():
+			if Input.is_action_just_pressed("smith_%d" % (i + 1)):
+				set_controlled(i)
 	var p = players[controlled]
+	p.in_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	p.in_sprint = Input.is_action_pressed("sprint")
+	for a in _pressed_actions():
+		do_action(p, a, {})
+
+const ACTIONS := ["interact", "use", "throw", "dive", "debug_strike", "debug_skip"]
+
+func _pressed_actions() -> Array:
+	var out = []
+	for a in ACTIONS:
+		if Input.is_action_just_pressed(a):
+			out.append(a)
+	return out
+
+## Client: send movement every physics tick (net.gd) and button presses as they happen.
+func _client_input() -> void:
+	if not net.scripted_input:
+		net.last_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+		net.last_sprint = Input.is_action_pressed("sprint")
+	if over:
+		return
+	for a in _pressed_actions():
+		var extra = {}
+		if a == "use":
+			# Judge the beat on this screen so lag doesn't eat good hits.
+			extra = {"anvil": anvil.on_beat(anvil.zone()), "grind": grindstone.on_beat(SF.GRIND_ZONE)}
+		net.send_action(a, extra)
+
+## Runs a button press for a smith. Host and offline only.
+func do_action(p, action_name: String, extra: Dictionary) -> void:
+	if over or paused_for_roll:
+		return
+	if action_name == "dive":
+		p.in_dive = true
+		return
 	if p.stun > 0.0:
 		return
-	if Input.is_action_just_pressed("interact"):
-		interact(p)
-	if Input.is_action_just_pressed("use"):
-		use(p)
-	if Input.is_action_just_pressed("throw") and p.held:
-		p.drop(p.facing * 7.0 + Vector3.UP * 3.5)
-	if Input.is_action_just_pressed("debug_strike"):
-		lightning.begin_warning(p)
-	if Input.is_action_just_pressed("debug_skip"):
-		door_broken()
+	match action_name:
+		"interact":
+			interact(p)
+		"use":
+			anvil.beat_override = (1 if extra["anvil"] else 0) if extra.has("anvil") else -1
+			grindstone.beat_override = (1 if extra["grind"] else 0) if extra.has("grind") else -1
+			use(p)
+			anvil.beat_override = -1
+			grindstone.beat_override = -1
+		"throw":
+			if p.held:
+				p.drop(p.facing * 7.0 + Vector3.UP * 3.5)
+		"debug_strike":
+			lightning.begin_warning(p)
+		"debug_skip":
+			door_broken()
 
 func set_controlled(i: int) -> void:
 	controlled = i
 	for j in players.size():
 		players[j].controlled = (j == i)
+		players[j].in_move = Vector2.ZERO
+		players[j].in_sprint = false
 
 func _update_camera(delta: float) -> void:
 	if players.is_empty():
@@ -358,6 +506,8 @@ func toast(msg: String) -> void:
 		toasts.pop_front()
 	if hud:
 		hud.toast(msg)
+	if net:
+		net.send_event("toast", msg)
 
 # ---------------------------------------------------------------- items
 
@@ -365,6 +515,9 @@ func spawn_item(kind: String, pos: Vector3, opts: Dictionary = {}) -> RigidBody3
 	var it = RigidBody3D.new()
 	it.set_script(ItemScript)
 	it.setup(kind, opts)
+	it.net_id = opts.get("net_id", next_item_id)
+	next_item_id = maxi(next_item_id, it.net_id) + 1
+	items_by_id[it.net_id] = it
 	items_root.add_child(it)
 	it.global_position = pos
 	return it
@@ -382,6 +535,7 @@ func despawn(it: RigidBody3D) -> void:
 	if it.station:
 		it.station.clear_slot(it)
 	it.remove_from_group("item")
+	items_by_id.erase(it.net_id)
 	it.queue_free()
 
 func check_weapon(w: RigidBody3D, p) -> void:
@@ -535,6 +689,8 @@ func use(p) -> String:
 func _say(p, msg: String) -> String:
 	if p.controlled:
 		hud.action(msg)
+	elif is_online():
+		net.say_to(p.idx, msg)
 	return msg
 
 ## One-line hint for what E and F do right now.
@@ -548,3 +704,147 @@ func hint(p) -> String:
 	elif _near_door(p):
 		parts.append("Near: the door")
 	return "   ".join(parts)
+
+# ---------------------------------------------------------------- online sync
+
+## Host: everything a client needs to draw this moment.
+func make_snapshot() -> Dictionary:
+	var ps = []
+	for p in players:
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.held.net_id if p.held else 0, p.facing])
+	var its = {}
+	for it in get_tree().get_nodes_in_group("item"):
+		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
+			it.hot, it.durability, it.bucket_full, it.quenched, it.tongs_load.net_id if it.tongs_load else 0,
+			it.is_free() and it.station == null]
+	var nodes = []
+	for n in area_nodes:
+		nodes.append([n.ore, n.hits])
+	return {
+		"p": ps, "i": its, "n": nodes,
+		"g": [door_index, time_left, area_time, peak_time, over, paused_for_roll, mods],
+		"f": [furnace.heat, furnace.contents, furnace.smelt],
+		"a": [anvil.slot.net_id if anvil.slot else 0, anvil.hits, anvil.misses, anvil.beat_t],
+		"s": [grindstone.slot.net_id if grindstone.slot else 0, grindstone.hits, grindstone.beat_t],
+		"d": [door.hp, door.max_hp, door.tier, door.beat_t],
+		"l": [lightning.ring.visible, lightning.target_pos],
+	}
+
+## Client: start the run with the host's player count, controlling our own smith.
+func start_client(count: int, smith: int) -> void:
+	run_started = true
+	over = false
+	player_count = count
+	_make_players(count)
+	for p in players:
+		p.puppet = true
+	set_controlled(smith)
+	hud.hide_big()
+
+func apply_snapshot(s: Dictionary) -> void:
+	if not run_started:
+		return
+	var g: Array = s["g"]
+	door_index = g[0]
+	time_left = g[1]
+	area_time = g[2]
+	peak_time = g[3]
+	over = g[4]
+	paused_for_roll = g[5]
+	var heads_before = mod("big_heads")
+	mods = g[6]
+	# Items: create new ones, update the rest, remove the ones the host no longer has.
+	var seen = {}
+	var its: Dictionary = s["i"]
+	for id in its:
+		var d: Array = its[id]
+		seen[id] = true
+		var it = items_by_id.get(id)
+		if it == null or not is_instance_valid(it):
+			it = spawn_item(d[0], d[4], {"tool": d[1], "ore": d[2], "tier": d[3], "net_id": id})
+			it.puppet = true
+			it.attach()
+			it.global_position = d[4]
+		it.net_pos = d[4]
+		it.net_rot = d[5]
+		it.hot = d[6]
+		it.durability = d[7]
+		it.bucket_full = d[8]
+		it.quenched = d[9]
+		it.net_loose = d[11]
+	for id in its:
+		var tl = its[id][10]
+		items_by_id[id].tongs_load = items_by_id.get(tl) if tl != 0 else null
+	for id in items_by_id.keys():
+		if not seen.has(id):
+			var gone = items_by_id[id]
+			items_by_id.erase(id)
+			if is_instance_valid(gone):
+				gone.remove_from_group("item")
+				gone.queue_free()
+	var ps: Array = s["p"]
+	for i in mini(ps.size(), players.size()):
+		var p = players[i]
+		var d: Array = ps[i]
+		p.net_pos = d[0]
+		p.net_rot = d[1]
+		p.stun = d[2]
+		p.held = items_by_id.get(d[3]) if d[3] != 0 else null
+		p.facing = d[4]
+		if mod("big_heads") != heads_before:
+			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
+	var nodes: Array = s["n"]
+	for i in mini(nodes.size(), area_nodes.size()):
+		if area_nodes[i].ore != nodes[i][0]:
+			area_nodes[i].set_ore(nodes[i][0])
+		area_nodes[i].hits = nodes[i][1]
+	var f: Array = s["f"]
+	furnace.heat = f[0]
+	furnace.contents = f[1]
+	furnace.smelt = f[2]
+	var a: Array = s["a"]
+	anvil.slot = items_by_id.get(a[0]) if a[0] != 0 else null
+	anvil.hits = a[1]
+	anvil.misses = a[2]
+	if absf(anvil.beat_t - a[3]) > 0.25:
+		anvil.beat_t = a[3]
+	var gs: Array = s["s"]
+	grindstone.slot = items_by_id.get(gs[0]) if gs[0] != 0 else null
+	grindstone.hits = gs[1]
+	if absf(grindstone.beat_t - gs[2]) > 0.25:
+		grindstone.beat_t = gs[2]
+	var d2: Array = s["d"]
+	door.hp = d2[0]
+	door.max_hp = d2[1]
+	door.tier = d2[2]
+	if absf(door.beat_t - d2[3]) > 0.25:
+		door.beat_t = d2[3]
+	var l: Array = s["l"]
+	lightning.ring.visible = l[0]
+	lightning.ring.global_position = Vector3(l[1].x, 0.08, l[1].z)
+
+## Client: one-off things the host tells us about.
+func apply_event(kind: String, data) -> void:
+	match kind:
+		"toast":
+			toasts.append(data)
+			hud.toast(data)
+		"say":
+			hud.action(data)
+		"roll":
+			hud.show_roll(data[0], data[1])
+		"hide_big", "restart":
+			hud.hide_big()
+		"big":
+			hud.show_big(data[0], data[1])
+		"strike":
+			lightning._bolt(data)
+			flash()
+		"area":
+			_clear_nodes()
+			door_index = data["door"]
+			for n in data["nodes"]:
+				area_nodes.append(_station("node", Vector3(n[1], 0.6, n[2]), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[n[0]], {"ore": n[0]}))
+			if data["rod"] and rod == null:
+				rod = _station("rod", Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8))
+			hud.hide_big()

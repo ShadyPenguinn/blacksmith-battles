@@ -39,7 +39,7 @@ func gap() -> float:
 	return g / main.player_scale("lightning")
 
 func _physics_process(delta: float) -> void:
-	if main.over or main.paused_for_roll:
+	if main.is_client() or main.over or main.paused_for_roll or not main.run_started:
 		return
 	if warn_t >= 0.0:
 		warn_t -= delta
@@ -87,6 +87,7 @@ func strike(pos: Vector3) -> void:
 	strikes += 1
 	_bolt(pos)
 	main.flash()
+	main.net.send_event("strike", pos)
 	if target == main.rod:
 		main.toast("The rod took the hit!")
 		return
@@ -101,6 +102,7 @@ func strike(pos: Vector3) -> void:
 			n.set_ore("starmetal")
 			main.toast("Lightning turned the ore into Starmetal!")
 
+## Just the visual. Clients call this when the host says a strike landed.
 func _bolt(pos: Vector3) -> void:
 	var bolt = Node3D.new()
 	add_child(bolt)

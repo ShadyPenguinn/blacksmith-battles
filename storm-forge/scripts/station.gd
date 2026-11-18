@@ -15,6 +15,7 @@ var max_hp = 0.0
 var tier = 0             # door armor tier
 var beat_t = 0.0         # anvil/grind beat clock
 var perfect = false      # tests: every beat hit lands
+var beat_override = -1   # online: the client judged the beat on its own screen (1 hit, 0 miss)
 var weak: MeshInstance3D  # door weak spot
 var weak_x = 0.0
 var label: Label3D
@@ -95,9 +96,13 @@ func beat_pos() -> float:
 func on_beat(window: float) -> bool:
 	if perfect:
 		return true
+	if beat_override >= 0:
+		return beat_override == 1
 	return absf(beat_pos() - 0.5) <= window * 0.5
 
 func _follow_slot(offset: Vector3) -> void:
+	if main.is_client():
+		return
 	if slot and is_instance_valid(slot):
 		slot.global_position = global_position + offset
 		slot.global_rotation = Vector3(0, PI * 0.5, 0)
@@ -111,23 +116,31 @@ func clear_slot(item: RigidBody3D) -> void:
 # --- Furnace ---
 
 func _furnace_tick(delta: float) -> void:
-	heat = maxf(0.0, heat - SF.HEAT_DECAY * delta)
-	var target = best_recipe()
+	if not main.is_client():
+		_furnace_logic(delta)
 	var line = "Furnace  heat %d" % int(heat)
 	if contents.is_empty():
-		smelt = 0.0
 		label.text = line + "\nempty"
 		return
 	var stuff = []
 	for k in contents.keys():
 		stuff.append("%s x%d" % [_content_name(k), contents[k]])
 	line += "\n" + ", ".join(stuff)
+	var target = best_recipe()
 	if target < 0:
-		smelt = 0.0
 		label.text = line + "\nno recipe yet"
 		return
 	var band: Array = SF.MATERIALS[target]["band"]
 	line += "\n%s: keep heat %d-%d  %s" % [SF.material_name(target), int(band[0]), int(band[1]), Build.meter(heat / 100.0, band[0] / 100.0, band[1] / 100.0)]
+	label.text = line + ("  %d%%" % int(100.0 * smelt / SF.SMELT_TIME))
+
+func _furnace_logic(delta: float) -> void:
+	heat = maxf(0.0, heat - SF.HEAT_DECAY * delta)
+	var target = best_recipe()
+	if contents.is_empty() or target < 0:
+		smelt = 0.0
+		return
+	var band: Array = SF.MATERIALS[target]["band"]
 	if heat > band[1] + SF.OVERHEAT_MARGIN:
 		contents.clear()
 		smelt = 0.0
@@ -141,7 +154,6 @@ func _furnace_tick(delta: float) -> void:
 			var ingot = main.spawn_item("ingot", global_position + Vector3(1.4, 1.0, 0.6), {"tier": target})
 			ingot.apply_central_impulse(Vector3(1.5, 2.0, 0.5) * ingot.mass)
 			main.toast(SF.material_name(target) + " ingot ready! Grab it with tongs.")
-	label.text = line + ("  %d%%" % int(100.0 * smelt / SF.SMELT_TIME))
 
 func _content_name(k: String) -> String:
 	if k.begins_with("scrap:"):

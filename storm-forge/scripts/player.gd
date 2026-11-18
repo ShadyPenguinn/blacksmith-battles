@@ -1,5 +1,7 @@
 extends CharacterBody3D
-## One smith. Only the controlled smith reads input; the others stand still (offline graybox).
+## One smith. Movement comes from in_move/in_sprint/in_dive, which main fills from the
+## keyboard (local smith) or from the network (remote smiths). On clients every smith is a
+## puppet that just follows the host's snapshots.
 
 var main: Node
 var idx = 0
@@ -18,6 +20,12 @@ var visual: Node3D
 var head: Node3D
 var ring: MeshInstance3D            # shows who you control
 var name_tag: Label3D
+var in_move = Vector2.ZERO          # -1..1 on each axis
+var in_sprint = false
+var in_dive = false                 # one-shot, cleared when used
+var puppet = false                  # client side: follow snapshots
+var net_pos = Vector3.ZERO
+var net_rot = Vector3.ZERO
 
 func setup(p_main: Node, p_idx: int) -> void:
 	main = p_main
@@ -73,6 +81,10 @@ func hand_position() -> Vector3:
 
 func _physics_process(delta: float) -> void:
 	ring.visible = controlled
+	if puppet:
+		global_position = global_position.lerp(net_pos, clampf(delta * 15.0, 0.0, 1.0))
+		visual.rotation = net_rot
+		return
 	if not is_on_floor():
 		velocity.y -= 20.0 * delta
 	dive_cd = maxf(0.0, dive_cd - delta)
@@ -91,14 +103,14 @@ func _physics_process(delta: float) -> void:
 
 	var dir = Vector3.ZERO
 	var sprint = false
-	if controlled and not main.paused_for_roll:
-		var iv = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		dir = Vector3(iv.x, 0, iv.y)
-		sprint = Input.is_action_pressed("sprint")
-		if Input.is_action_just_pressed("dive") and dive_cd <= 0.0:
+	if not main.paused_for_roll:
+		dir = Vector3(in_move.x, 0, in_move.y)
+		sprint = in_sprint
+		if in_dive and dive_cd <= 0.0:
 			dive_t = SF.DIVE_TIME
 			dive_cd = SF.DIVE_COOLDOWN
 			dive_dir = dir.normalized() if dir.length() > 0.1 else facing
+	in_dive = false
 	if dir.length() > 0.1:
 		facing = dir.normalized()
 		visual.rotation.y = atan2(-facing.x, -facing.z)
