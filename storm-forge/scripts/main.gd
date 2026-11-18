@@ -629,6 +629,10 @@ func _client_input() -> void:
 func do_action(p, action_name: String, extra: Dictionary) -> void:
 	if over or paused_for_roll:
 		return
+	# The smith's state decides which buttons do anything right now (see SF.STATE_ALLOWS).
+	var what = "slot" if action_name.begins_with("slot_") else action_name
+	if what in ["dive", "slot", "interact", "use", "throw"] and not p.can(what):
+		return
 	if action_name == "dive":
 		p.in_dive = true
 		return
@@ -638,10 +642,6 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 			"slot_next": p.cycle(1)
 			_: p.select(int(action_name.substr(5)) - 1)
 		return
-	if p.stun > 0.0:
-		return
-	if p.busy() and action_name in ["interact", "use", "throw"]:
-		return   # still swinging: one press, one swing
 	match action_name:
 		"interact":
 			var said = interact(p)
@@ -947,6 +947,22 @@ func _face_target(p) -> void:
 	if d.length() > 0.2:
 		p.facing = d.normalized()
 
+## Where a swing meets its target: the target's near face, at about tool height.
+func contact_point(p, t: Node3D) -> Vector3:
+	var c = t.global_position
+	var to_p = p.global_position - c
+	to_p.y = 0.0
+	var dir = to_p.normalized() if to_p.length() > 0.01 else -p.facing
+	if t == door:
+		return Vector3(p.global_position.x, 1.0, door.global_position.z + signf(p.global_position.z - door.global_position.z) * 0.4)
+	var half = 0.4
+	var h = 0.8
+	if "size" in t:
+		half = maxf(t.size.x, t.size.z) * 0.45
+		h = t.size.y
+	var base_y = c.y - h * 0.5 if t is StaticBody3D else c.y
+	return Vector3(c.x, maxf(base_y + h * 0.6, 0.25), c.z) + dir * half
+
 ## The moment a swing lands, on every screen: a burst at the point of contact and a jiggle.
 func action_fx(p, what: String) -> void:
 	var tip = p.hand_position() + p.facing * 0.55
@@ -961,6 +977,7 @@ func action_fx(p, what: String) -> void:
 	if t == null:
 		Fx.dust(self, tip, 5, 0.6)       # whiff
 		return
+	tip = contact_point(p, t)
 	if t.has_method("jiggle"):
 		t.jiggle()
 	if p.controlled:

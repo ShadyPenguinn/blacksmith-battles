@@ -69,6 +69,28 @@ func _run() -> void:
 	miner.in_move = Vector2.ZERO
 	await create_timer(1.6).timeout
 
+	# State machine: no swinging in the air or mid-flop; jump mid-slide stands you up.
+	miner.in_dive = true
+	await frames(4)
+	check(miner.state() == "air", "jumping puts you in the air")
+	var hits_air = node2.hits
+	main.do_action(miner, "use", {})
+	check(not miner.busy(), "you can't swing while jumping")
+	main.do_action(miner, "dive", {})
+	await frames(4)
+	check(miner.state() == "flop", "jump again in the air to belly flop")
+	main.do_action(miner, "use", {})
+	check(not miner.busy(), "you can't swing mid-flop")
+	for i in 60:
+		await physics_frame
+		if miner.is_on_floor():
+			break
+	main.do_action(miner, "dive", {})
+	await frames(3)
+	check(not miner.flop and miner.velocity.y <= 0.1, "jump mid-slide stands you up instead of bouncing")
+	await create_timer(0.6).timeout
+	check(node2.hits == hits_air, "no hits landed from the air")
+
 	# Pocket the ore (pickaxe stays in hand), carry it to the furnace.
 	put(miner, ores[0].global_position)
 	await frames(2)

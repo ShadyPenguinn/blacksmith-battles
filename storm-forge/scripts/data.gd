@@ -42,6 +42,7 @@ const MOVE := {
 	"flop_slide_time": 0.55,
 }
 const DIVE_SPEED := 11.0
+const DIVE_LOAD_PENALTY := 0.22   # each ore, ingot or other heavy thing carried cuts the dive this much (3 = about a third left)
 const DIVE_TIME := 0.25
 const DIVE_COOLDOWN := 1.0
 const REACH := 2.2
@@ -209,6 +210,20 @@ const ACTIONS := {
 	"grab": {"clip": "PickUp", "impact": 0.5, "speed": 2.2, "recoil": 0.0, "settle": 0.15, "squash": 0.12},
 	"place": {"clip": "Interact", "impact": 0.45, "speed": 2.2, "recoil": 0.0, "settle": 0.15, "squash": 0.1},
 	"throw": {"clip": "Throw", "impact": 0.72, "speed": 1.6, "recoil": 0.0, "settle": 0.2, "squash": 0.12},
+}
+
+## The smith's states, and which buttons work in each. One state at a time:
+##   ground: on your feet, free to move and work
+##   air: jumping or falling (press jump again to belly flop)
+##   flop: belly flop and slide (press jump to stand back up)
+##   act: mid-swing, planted until it settles
+##   stunned: struck by lightning, flying or flat on your back
+const STATE_ALLOWS := {
+	"ground": ["move", "dive", "slot", "interact", "use", "throw"],
+	"air": ["move", "dive", "slot"],
+	"flop": ["dive"],
+	"act": [],
+	"stunned": [],
 }
 
 ## Lightning launch: the struck smith goes flying, limp and buzzing.
