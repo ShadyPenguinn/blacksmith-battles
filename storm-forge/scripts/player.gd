@@ -268,6 +268,19 @@ func _process(delta: float) -> void:
 		anim.advance(delta)
 		if goofy:
 			goofy.apply()
+	# Snap the held item to the hand after the final pose, so it never lags or drifts.
+	_place_in_hand()
+
+## The selected item goes in the model's right-hand slot (tongs carry their load along).
+func _place_in_hand() -> void:
+	if not has_model or sel < 0 or sel >= slots.size():
+		return
+	var it = slots[sel]
+	if it == null or not is_instance_valid(it) or not it.has_model:
+		return
+	it.global_transform = hand_transform() * it.grip.affine_inverse()
+	if it.tongs_load and is_instance_valid(it.tongs_load):
+		it.tongs_load.global_position = it.global_position - it.global_transform.basis.z * 0.55
 
 ## Play a one-shot action (mining swing, hammer blow, throw...). Host side; clients copy it.
 func act(what: String) -> void:

@@ -1,5 +1,6 @@
 extends SceneTree
-## Frames of a smith running past the camera, to judge the run. -- <out dir> [count] [side|front]
+## Frames of a smith running past the camera, to judge the run.
+## -- <out dir> [count] [side|front] [--empty] [--p0..--p3 which smith]
 
 func _initialize() -> void:
 	_run()
@@ -15,8 +16,12 @@ func _run() -> void:
 	root.add_child(main)
 	await create_timer(0.5).timeout
 	main.lightning.next_in = 9999.0
-	main.set_controlled(3)
-	var p = main.players[0]
+	var who = 0
+	for a in args:
+		if a.begins_with("--p"):
+			who = int(a.substr(3))
+	main.set_controlled(3 if who != 3 else 0)
+	var p = main.players[who]
 	for o in main.players:
 		if o != p:
 			o.global_position = Vector3(10 + o.idx, 0.1, -8)
