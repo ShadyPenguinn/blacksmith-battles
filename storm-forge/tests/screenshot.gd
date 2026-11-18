@@ -35,10 +35,9 @@ func _run() -> void:
 	main.furnace.heat = 48.0
 	var ingot = main.spawn_item("ingot", main.anvil.global_position, {"tier": 0})
 	main.anvil.accept(ingot)
-	main.anvil.hits = 2
-	var blank = main.spawn_item("blank", main.grindstone.global_position, {"tier": 0})
-	main.grindstone.accept(blank)
-	blank.quenched = true
+	main.anvil.shape = 1.5
+	var blank = main.spawn_item("blank", main.trough.global_position, {"tier": 0})
+	main.trough.accept(blank)
 	for i in 3:
 		main.spawn_item("ore", Vector3(-6.5 + i * 0.7, 0.5, 1.0), {"ore": "copper"})
 	for i in 2:

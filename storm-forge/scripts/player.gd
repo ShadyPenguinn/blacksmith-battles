@@ -43,6 +43,9 @@ var name_tag: Label3D
 var in_move = Vector2.ZERO          # -1..1 on each axis
 var in_sprint = false
 var in_dive = false                 # one-shot, cleared when used
+var in_hold = false                 # use button held down (hauling a rope)
+var rope: Node3D = null             # the anvil whose hammer rope you're hauling
+var rope_grace = 0.0                # just grabbed: don't let go before the held button arrives
 var puppet = false                  # client side: follow snapshots
 var net_pos = Vector3.ZERO
 var net_rot = Vector3.ZERO
@@ -314,6 +317,8 @@ func _goof(delta: float, moved: float) -> void:
 		pitch = -deg_to_rad(g["flop_deg"])
 	elif skidding:
 		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
+	if rope:
+		pitch = deg_to_rad(18.0 + 16.0 * rope_pull())   # hauling: lean way back
 	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
 
 ## The bellows under your feet, if you're standing on one.
@@ -411,9 +416,28 @@ func state() -> String:
 		return "flop"
 	if act_phase != "":
 		return "act"
+	if rope != null:
+		return "rope"
 	if airborne() and coyote_t <= 0.0:
 		return "air"
 	return "ground"
+
+## Grab the anvil's hammer rope. Hold use to keep hauling; let go and the hammer drops.
+func grab_rope(anvil: Node3D) -> void:
+	rope = anvil
+	rope_grace = 0.2
+	in_hold = true
+
+func let_go() -> void:
+	rope = null
+
+## How hard you're hauling: 0 standing by the rope, 1 at the end of it.
+func rope_pull() -> float:
+	if rope == null:
+		return 0.0
+	var g: Dictionary = SF.TRIP
+	var off = global_position - rope.rope_anchor()
+	return clampf((Vector2(off.x, off.z).length() - g["slack"]) / g["pull_len"], 0.0, 1.0)
 
 ## Can this smith do that right now? (move, dive, slot, interact, use, throw)
 func can(what: String) -> bool:
@@ -508,6 +532,9 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor() and stun > 0.0:
 		velocity.y -= SF.ZAP["gravity"] * delta
 	dive_cd = maxf(0.0, dive_cd - delta)
+	rope_grace = maxf(0.0, rope_grace - delta)
+	if rope != null and (stun > 0.0 or rope.dead or (not in_hold and rope_grace <= 0.0)):
+		rope = null
 	_update_held(delta)
 
 	if stun > 0.0:
@@ -583,6 +610,8 @@ func _physics_process(delta: float) -> void:
 	if heavy > 0:
 		var slow = SF.CARRY_SLOW - SF.CARRY_SLOW_EXTRA * (heavy - 1)
 		speed *= slow if main.mod("featherweight") == 0 else 0.9
+	if rope:
+		speed *= SF.TRIP["rope_slow"]
 	var flat = Vector3(velocity.x, 0, velocity.z)
 	if flop:
 		dive_t -= delta
@@ -617,6 +646,12 @@ func _physics_process(delta: float) -> void:
 		facing = dir.normalized()
 	elif flop:
 		facing = dive_dir
+	if rope:
+		# Haul with your back to where you're going: face the rope, walk backwards.
+		var to_rope = rope.rope_anchor() - global_position
+		to_rope.y = 0.0
+		if to_rope.length() > 0.2:
+			facing = to_rope.normalized()
 	# Turn smoothly toward where you're heading and bank into the corner.
 	var want_yaw = atan2(-facing.x, -facing.z)
 	var before = vis_yaw
@@ -625,6 +660,17 @@ func _physics_process(delta: float) -> void:
 	visual.rotation.y = vis_yaw
 	var fall = velocity.y
 	move_and_slide()
+	if rope:
+		# The rope only stretches so far.
+		var anchor = rope.rope_anchor()
+		var off = Vector3(global_position.x - anchor.x, 0, global_position.z - anchor.z)
+		var most = SF.TRIP["slack"] + SF.TRIP["pull_len"]
+		if off.length() > most:
+			var out = off.normalized()
+			global_position = Vector3(anchor.x + out.x * most, global_position.y, anchor.z + out.z * most)
+			var vout = velocity.dot(out)
+			if vout > 0.0:
+				velocity -= out * vout
 	if is_on_floor() and not grounded and fall < -SF.BELLOWS["min_fall"]:
 		var b = _floor_bellows()
 		if b:
@@ -720,6 +766,7 @@ func zap() -> void:
 	var stun_time = SF.STUN_TIME * (0.5 ** main.mod("second_wind"))
 	stun = stun_time
 	flop = false
+	rope = null
 	_end_act()
 	# You fly one way, everything you carry flies the other.
 	var z: Dictionary = SF.ZAP
