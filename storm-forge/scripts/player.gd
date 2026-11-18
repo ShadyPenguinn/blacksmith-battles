@@ -316,6 +316,14 @@ func _goof(delta: float, moved: float) -> void:
 		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
 	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
 
+## End a belly flop: pop up onto your feet, keeping your slide as a walk.
+func _stand_up() -> void:
+	flop = false
+	flop_slide = 0.0
+	land_sq = 0.35
+	jumped = false
+	puff(8, 1.0)
+
 ## Flying from a lightning strike: tumble in the air, buzz with electricity, flail.
 func _zapped_look(delta: float, air: bool) -> void:
 	var z: Dictionary = SF.ZAP
@@ -332,13 +340,16 @@ func _zapped_look(delta: float, air: bool) -> void:
 		goofy.phase += delta * (14.0 if air else 3.0)   # arms flail
 	if puppet:
 		return
-	if air:
+	# The knocked-down clip already lays the smith on their back, so the body only
+	# tumbles on the way up; on the way down and on the ground it rights itself and
+	# the clip does the lying down (no head-first landings).
+	var k = clampf(delta * 12.0, 0.0, 1.0)
+	if air and not bounced and velocity.y > -2.0:
 		visual.rotation.x += delta * z["spin"] * spin_dir
 		visual.rotation.z = lerp_angle(visual.rotation.z, 0.4 * spin_dir, delta * 4.0)
 	else:
-		# Splat flat on your back until you recover.
-		visual.rotation.x = lerp_angle(visual.rotation.x, 1.45, clampf(delta * 10.0, 0.0, 1.0))
-		visual.rotation.z = lerp_angle(visual.rotation.z, 0.0, clampf(delta * 10.0, 0.0, 1.0))
+		visual.rotation.x = lerp_angle(visual.rotation.x, 0.0, k)
+		visual.rotation.z = lerp_angle(visual.rotation.z, 0.0, k)
 
 ## A little puff of dust at the feet (purely visual).
 func puff(count: int, size: float) -> void:
@@ -371,7 +382,7 @@ func _place_in_hand() -> void:
 ## moment the tool makes contact. Returns false if you're still busy with the last one.
 ## Host side; clients see act_seq change and play the same swing (without the effect).
 func act(what: String, on_impact: Callable = Callable()) -> bool:
-	if busy() or stun > 0.0:
+	if state() != "ground":
 		return false
 	act_name = what
 	act_seq += 1
@@ -382,6 +393,22 @@ func act(what: String, on_impact: Callable = Callable()) -> bool:
 
 func busy() -> bool:
 	return act_phase != ""
+
+## The one state this smith is in. Order matters: being struck beats everything.
+func state() -> String:
+	if stun > 0.0:
+		return "stunned"
+	if flop:
+		return "flop"
+	if act_phase != "":
+		return "act"
+	if airborne() and coyote_t <= 0.0:
+		return "air"
+	return "ground"
+
+## Can this smith do that right now? (move, dive, slot, interact, use, throw)
+func can(what: String) -> bool:
+	return what in SF.STATE_ALLOWS[state()]
 
 func _start_act(what: String) -> void:
 	act_def = SF.ACTIONS.get(what, {})
@@ -499,10 +526,10 @@ func _physics_process(delta: float) -> void:
 	var sprint = false
 	var grounded = is_on_floor()
 	var m: Dictionary = SF.MOVE
-	if not main.paused_for_roll and not busy():
+	if not main.paused_for_roll and can("move"):
 		dir = Vector3(in_move.x, 0, in_move.y).limit_length(1.0)
 		sprint = in_sprint
-	if busy():
+	if not can("dive"):
 		in_dive = false   # planted mid-swing: no jumping out of it
 	# Coyote time and jump buffer: forgiving, so jumps never feel eaten.
 	coyote_t = m["coyote"] if grounded else maxf(0.0, coyote_t - delta)
@@ -510,6 +537,11 @@ func _physics_process(delta: float) -> void:
 		jump_buf = m["jump_buffer"]
 	in_dive = false
 	jump_buf = maxf(0.0, jump_buf - delta)
+	if jump_buf > 0.0 and flop:
+		# Space while belly-sliding: hop back onto your feet and keep walking. No seal bouncing.
+		if grounded and dive_t <= 0.0:
+			_stand_up()
+		jump_buf = 0.0
 	if jump_buf > 0.0:
 		if coyote_t > 0.0 and dive_t <= 0.0:
 			velocity.y = m["jump_speed"]
@@ -524,8 +556,10 @@ func _physics_process(delta: float) -> void:
 			dive_cd = SF.DIVE_COOLDOWN
 			flop = true
 			dive_dir = dir.normalized() if dir.length() > 0.1 else facing
-			velocity.x = dive_dir.x * SF.DIVE_SPEED
-			velocity.z = dive_dir.z * SF.DIVE_SPEED
+			# Loaded pockets make a sad little flop.
+			var dive_speed = SF.DIVE_SPEED * maxf(0.25, 1.0 - SF.DIVE_LOAD_PENALTY * heavy_count())
+			velocity.x = dive_dir.x * dive_speed
+			velocity.z = dive_dir.z * dive_speed
 			velocity.y = maxf(velocity.y, m["flop_hop"])
 			jump_buf = 0.0
 	# Gravity: floaty at the top of the jump, quick on the way down.
@@ -548,10 +582,7 @@ func _physics_process(delta: float) -> void:
 			flat = flat.move_toward(Vector3.ZERO, m["flop_friction"] * delta)
 			flop_slide += delta
 			if flop_slide >= m["flop_slide_time"] or flat.length() < 0.5:
-				flop = false
-				flop_slide = 0.0
-				land_sq = 0.35
-				puff(8, 1.0)
+				_stand_up()
 	else:
 		var target = dir * speed
 		var rate: float

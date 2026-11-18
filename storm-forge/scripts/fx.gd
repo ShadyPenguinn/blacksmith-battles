@@ -53,9 +53,11 @@ static func burst(parent: Node, pos: Vector3, color: Color, count: int, size := 
 		pa.angular_velocity_min = -400.0
 		pa.angular_velocity_max = 400.0
 	pa.color = color
-	parent.add_child(pa)
-	pa.global_position = pos
+	# Place it before it enters the scene: a one-shot burst fires on its first frame,
+	# and setting the position afterwards made it fire from the world origin.
+	pa.position = parent.to_local(pos) if parent is Node3D else pos
 	pa.emitting = true
+	parent.add_child(pa)
 	pa.finished.connect(pa.queue_free)
 
 static func dust(parent: Node, pos: Vector3, count: int, size := 1.0) -> void:
