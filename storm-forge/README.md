@@ -24,8 +24,8 @@ Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2`
 | Shift | Sprint |
 | Space | Jump. Press again in the air to belly flop (dodge lightning) |
 | E or right-click | Grab into your hotbar, put things on a station (from your hand or pockets), grip with tongs, or drop |
-| F or left-click | Use what you hold |
-| Q | Throw what you hold |
+| F or left-click | Use what you hold. By the anvil's rope handle: hold it to haul the hammer up, let go to drop it |
+| Q | Throw what you hold (at the dunk tank it aims for the target) |
 | 1-4 or mouse wheel | Pick a hotbar slot |
 | Tab | Offline: switch smith (Miner, Smelter, Smith, Finisher) |
 | L | Debug: call lightning on yourself |
@@ -40,12 +40,12 @@ Every smith has 4 slots. Slot 1 holds your one tool, and you can never carry two
 
 1. **Miner** hits an ore node 3 times with the pickaxe. A chunk pops out.
 2. Press E by the chunk to pocket it (the pickaxe stays in hand), then E at the **furnace** to put it in. Hauling slows you down.
-3. **Smelter** jumps on the two stomp bellows beside the furnace to blow air in (alternate sides: the same one twice in a row pumps less, and five stomps in under two seconds makes the furnace burp a fireball that knocks everyone back). Tuning is in `SF.BELLOWS`. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag.
+3. **Smelter** jumps on the two stomp bellows beside the furnace to blow air in (alternate sides: the same one twice in a row pumps less, and five stomps in under two seconds makes the furnace burp a fireball that knocks everyone back). Tuning is in `SF.BELLOWS`. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag. The furnace mouth shows the fire: dark when there's no heat, orange while it warms up, yellow when it's the right heat for what's inside, and pulsing red when it's about to slag (colors in `SF.FIRE`).
 4. The hot ingot pops out. Grab it with the tongs (E) and put it on the **anvil** (E). Bare hands burn and you drop it.
-5. **Smith** hits the anvil with the hammer (F) when the O is in the `===` zone. 4 hits makes a blade, 3 misses makes scrap.
-6. Carry the blade to the **grindstone**. **Finisher** fills the bucket at the trough, quenches the blade, then grinds on the beat 3 times.
+5. **Anyone** grabs the red rope handle beside the anvil (hold F or the left mouse button) and walks away from the anvil to haul the giant hammer up. Let go and it drops. The higher it falls, the harder the slam: one smith can get it about two thirds of the way up, two smiths get it to the top. A full-height slam shakes anyone standing at the anvil off their feet. About 3 full slams shape the blade. Ingots stay hot for 30 seconds. Tuning is in `SF.TRIP`.
+6. The finished blade springs off the anvil and lands on the **dunk tank** seat. Throw an ore chunk (Q) at the target sliding along the rail behind the tank. A throw at the tank flies straight on from where you stand and arcs to the target's height, so stand in its path and time it. Hit it and the seat drops: the blade quenches in the tank and rides the water slide out the front as a finished sword. Tuning is in `SF.DUNK`. The bucket still fills at the tank.
 7. Take the sword to the **door** and swing (F). Hit the glowing weak spot for double damage. A sword below the door's metal bounces off. Broken swords become scrap; put scrap back in the furnace.
-8. Door down: a random buff and debuff roll, then you walk through into the next area. Each area has its own furnace, anvil, grindstone and trough in a new spot, plus veins of the new metal. Area 1 always uses the same starter layout.
+8. Door down: a random buff and debuff roll, then you walk through into the next area. Each area has its own furnace, anvil and dunk tank in a new spot, plus veins of the new metal. Area 1 always uses the same starter layout.
 
 **Ore veins** hold 3-5 chunks each (shown as "N left") and crumble when empty. About every 30 seconds, lightning cracks open a new vein somewhere in the area, up to 2 more than the area started with.
 
@@ -55,15 +55,15 @@ When the storm timer runs out you get a 60-second last stand with ever faster li
 
 ## Tuning
 
-Every number is at the top of `scripts/data.gd`: timer, strike rate, heat bands, beat windows, door HP, recipes, buffs and debuffs.
+Every number is at the top of `scripts/data.gd`: timer, strike rate, heat bands, the rope hammer, the dunk tank, door HP, recipes, buffs and debuffs.
 
 ## Models
 
-The smiths, tools, anvil, grindstone, ore rocks, ore chunks, bars and swords are KayKit models (CC0, by Kay Lousberg) in `assets/models/`. Each smith is a different KayKit adventurer: Barbarian (Miner), Engineer (Smelter), Knight (Smith) and Druid (Finisher). They use the KayKit Rig_Medium animations for idle, walking, running, dodging, getting struck, pickaxe swings, hammering, throwing and picking up. Ores and metals are told apart by a color tint. The furnace, trough, door and walls are still placeholder boxes.
+The smiths, tools, anvil, ore rocks, ore chunks, bars and swords are KayKit models (CC0, by Kay Lousberg) in `assets/models/`. Each smith is a different KayKit adventurer: Barbarian (Miner), Engineer (Smelter), Knight (Smith) and Druid (Finisher). They use the KayKit Rig_Medium animations for idle, walking, running, dodging, getting struck, pickaxe swings, hammering, throwing and picking up. Ores and metals are told apart by a color tint. The furnace, the hammer frame, the dunk tank, door and walls are still placeholder boxes.
 
 Every model path is in `SF.MODELS` in `scripts/data.gd`. An entry is a path, or `{"path", "rot"}` to turn the model first. Each model is scaled to fit its collision box, and an empty entry keeps the placeholder. Animation clip choices are in `SF.ANIM_WORDS` and `SF.ACTION_ANIMS`, and the camera distance is `SF.CAM_OFFSET`. Copy more models from the full collection into `assets/models/` and point a key at them. `assets/kaykit/` is git-ignored if you want a local scratch folder.
 
-The run is made goofy in code on top of the KayKit clip: each step hops, squashes and waddles, the body leans in, the arms are flung out to the sides and flap, and the head wobbles. Every knob is in `SF.GOOFY` in `scripts/data.gd` (the arm and head part is `scripts/goofy.gd`). Work actions are one-shot: one press is one swing, the effect lands when the tool makes contact, the tool bounces back, and you stand still until it settles. Each swing's clip, contact time and bounce are in `SF.ACTIONS`, and the lightning launch is `SF.ZAP`. `tests/actionframes.gd` renders a mining swing, a hammer blow or a strike. Movement feel (momentum, skids, the floaty jump and the belly flop) is tuned in `SF.MOVE`, and `tests/moveframes.gd` renders a run, skid, jump and flop routine. `tests/runframes.gd` saves frames of a smith sprinting past the camera to judge it (`-- /some/folder 8 side` or `front`, add `--empty` for no tool).
+The run is made goofy in code on top of the KayKit clip: each step hops, squashes and waddles, the body leans in, the arms are flung out to the sides and flap, and the head wobbles. Every knob is in `SF.GOOFY` in `scripts/data.gd` (the arm and head part is `scripts/goofy.gd`). Work actions are one-shot: one press is one swing, the effect lands when the tool makes contact, the tool bounces back, and you stand still until it settles. Each swing's clip, contact time and bounce are in `SF.ACTIONS`, and the lightning launch is `SF.ZAP`. `tests/actionframes.gd` renders a mining swing, a hammer blow or a strike, and `tests/forgeframes.gd` renders the furnace glow, the rope hammer and the dunk tank (`-- /some/folder fire`, `hammer` or `dunk`). Movement feel (momentum, skids, the floaty jump and the belly flop) is tuned in `SF.MOVE`, and `tests/moveframes.gd` renders a run, skid, jump and flop routine. `tests/runframes.gd` saves frames of a smith sprinting past the camera to judge it (`-- /some/folder 8 side` or `front`, add `--empty` for no tool).
 
 `tests/closeup.gd` renders close-up frames of a smith idling, walking, mining and getting struck:
 

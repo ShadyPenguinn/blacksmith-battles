@@ -72,13 +72,46 @@ const BELLOWS := {
 const HEAT_DECAY := 6.0           # heat lost per second
 const SMELT_TIME := 3.0           # seconds in the heat band to make an ingot
 const OVERHEAT_MARGIN := 12.0     # this far above the band = slag
-const ANVIL_HITS := 4
-const ANVIL_MISSES_TO_RUIN := 3
-const BEAT_TIME := 1.2            # seconds for the beat marker to sweep across and back
-const ANVIL_ZONE := 0.18          # share of the sweep that counts as on-beat
-const INGOT_HOT_TIME := 14.0      # seconds an ingot stays hot enough to hammer
-const GRIND_HITS := 3
-const GRIND_ZONE := 0.22
+const INGOT_HOT_TIME := 30.0      # seconds an ingot stays hot enough to hammer
+## Furnace mouth glow: dark when there's no fire, orange while warming, yellow in the
+## recipe's heat band, angry red (and pulsing) when it's too hot and about to slag.
+const FIRE := {
+	"warming": Color(0.9, 0.3, 0.04),
+	"ready": Color(1.0, 0.85, 0.15),
+	"too_hot": Color(0.95, 0.03, 0.02),
+}
+## Rope drop hammer at the anvil. Grab the rope (hold F or the mouse) and walk away
+## from the anvil to haul the giant hammer up; let go and it drops. Anyone can pull.
+const TRIP := {
+	"lift": 2.0,              # meters the head rises at full pull
+	"solo": 0.65,             # one smith pulling all the way gets it this high (two get it to the top)
+	"slack": 1.0,             # meters you can stand from the rope before it starts lifting
+	"pull_len": 2.6,          # then this much further to pull it all the way
+	"grab_reach": 1.5,        # how close to the rope handle you need to be to grab it
+	"rope_slow": 0.55,        # walking speed while hauling
+	"raise_speed": 2.2,       # meters per second the head can rise (it's heavy)
+	"gravity": 26.0,          # how fast it drops
+	"shape_needed": 3.0,      # slam power to finish a sword (a full-height slam is 1.0)
+	"min_power": 0.12,        # weaker than this is just a bump
+	"big_power": 0.85,        # a slam this strong shakes nearby smiths off their feet
+	"quake_radius": 2.4,
+	"quake_push": 4.5,
+	"quake_stun": 0.35,
+}
+## Dunk tank. The finished sword flies off the anvil onto the seat. Hit the moving target
+## with a thrown ore chunk: the seat drops, the sword quenches in the tank and rides the
+## water slide out the front, done.
+const DUNK := {
+	"target_height": 2.2,     # meters above the ground
+	"range": 1.3,             # the target slides this far either side
+	"speed": 1.3,             # how fast it slides (radians/second of the sweep)
+	"speed_per_area": 0.08,   # a bit faster each area
+	"hit_radius": 0.6,
+	"min_speed": 3.0,         # thrown, not dropped
+	"throw_speed": 9.0,       # horizontal speed of an aimed throw at the tank
+	"aim_range": 10.0,        # throws this close to the tank aim at the target's height
+	"fling_time": 0.9,        # seconds the sword flies from the anvil to the seat
+}
 const WEAPON_DURABILITY := 10
 const WEAPON_DAMAGE := 10.0
 const TIER_BONUS := 0.5           # extra damage per tier above the door's armor
@@ -141,7 +174,7 @@ const DEBUFFS := [
 	{"id": "short_fuse", "name": "Short Fuse", "desc": "-30s on the storm timer"},
 	{"id": "butterfingers", "name": "Butterfingers", "desc": "Sprinting can make you drop things"},
 	{"id": "brittle", "name": "Brittle Batch", "desc": "Weapons wear 40% faster"},
-	{"id": "tiny_anvil", "name": "Tiny Anvil", "desc": "Anvil beat window is half as wide"},
+	{"id": "tiny_anvil", "name": "Tiny Anvil", "desc": "The hammer needs 50% more slams"},
 	{"id": "role_swap", "name": "Role Swap", "desc": "Everyone's tools rotate one smith"},
 	{"id": "big_heads", "name": "Big Heads", "desc": "Purely cosmetic. Very big heads"},
 ]
@@ -171,7 +204,6 @@ const MODELS := {
 	"ore_node": M + "dungeon/rocks.gltf",
 	"furnace": "",
 	"anvil": M + "tools/anvil.gltf",
-	"grindstone": M + "tools/grindstone.gltf",
 	"trough": "",
 	"door": "",
 }
@@ -232,12 +264,14 @@ const ACTIONS := {
 ##   air: jumping or falling (press jump again to belly flop)
 ##   flop: belly flop and slide (press jump to stand back up)
 ##   act: mid-swing, planted until it settles
+##   rope: hauling the anvil's hammer rope (hold use; let go to drop it)
 ##   stunned: struck by lightning, flying or flat on your back
 const STATE_ALLOWS := {
 	"ground": ["move", "dive", "slot", "interact", "use", "throw"],
 	"air": ["move", "dive", "slot"],
 	"flop": ["dive"],
 	"act": [],
+	"rope": ["move"],
 	"stunned": [],
 }
 

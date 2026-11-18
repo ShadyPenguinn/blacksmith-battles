@@ -54,6 +54,11 @@ func _host() -> void:
 	check(await wait_until(func(): return main.furnace.heat > 0.0, 15.0), "client's jump on the bellows heated the furnace on the host")
 	var x0 = p1.global_position.x
 	check(await wait_until(func(): return p1.global_position.x > x0 + 0.8, 15.0), "client's movement moved its smith on the host")
+	await wait(0.6)   # let the client's walk finish first
+	p1.global_position = main.anvil.handle_rest() + Vector3(0, -0.9, 0)
+	p1.velocity = Vector3.ZERO
+	check(await wait_until(func(): return main.anvil.ham_h > 0.3, 10.0), "client held use on the rope and hauled the hammer up on the host")
+	check(await wait_until(func(): return p1.rope == null and main.anvil.ham_h == 0.0, 6.0), "client let go and the hammer dropped on the host")
 	await wait(1.0)
 	main.lightning.target = p1
 	main.lightning.strike(p1.global_position)
@@ -91,6 +96,14 @@ func _client() -> void:
 	await wait(0.6)
 	main.net.last_move = Vector2.ZERO
 	check(await wait_until(func(): return me.global_position.x > x0 + 0.8, 5.0), "client sees its smith move")
+	await wait(2.0)
+	main.net.last_hold = true
+	main.net.send_action("use", {})
+	main.net.last_move = Vector2(0, 1)
+	check(await wait_until(func(): return me.rope != null and main.anvil.ham_h > 0.3, 6.0), "client sees itself hauling the hammer up")
+	main.net.last_hold = false
+	main.net.last_move = Vector2.ZERO
+	check(await wait_until(func(): return me.rope == null and main.anvil.ham_h == 0.0, 6.0), "client sees the hammer drop")
 	check(await wait_until(func(): return me.stun > 0.0, 15.0), "client sees its smith get struck")
 	check(main.toasts.any(func(t): return t.begins_with("ZAP!")), "client got the ZAP message")
 	await wait(0.5)
