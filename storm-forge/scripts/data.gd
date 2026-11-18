@@ -1,0 +1,146 @@
+class_name SF
+extends RefCounted
+## All tuning numbers and game data live here. Change a number, press F5.
+
+# --- Storm and timer ---
+const AREA_TIME := 300.0          # seconds per door before the storm peaks
+const PEAK_GRACE := 60.0          # seconds of peak storm before the run is lost
+const STRIKE_GAP_START := 22.0    # seconds between strikes at the start of an area
+const STRIKE_GAP_PEAK := 2.5      # seconds between strikes when the timer hits zero
+const STRIKE_GAP_MIN := 0.8       # fastest the storm ever gets during the last stand
+const TELEGRAPH := 1.5            # warning time before a strike
+const TELEGRAPH_LOCK := 0.4       # the ring stops following you this long before it hits
+const STRIKE_RADIUS := 1.6
+const STUN_TIME := 2.0
+const METAL_WEIGHT := 2.0         # extra strike weight for each metal thing you hold
+const NODE_STRIKE_CHANCE := 0.25  # chance a strike targets an ore node instead of a smith
+const STARMETAL_FROM_DOOR := 5    # door index (0-based) where struck nodes turn to Starmetal
+
+# --- Movement ---
+const MOVE_SPEED := 5.0
+const SPRINT_MULT := 1.5
+const CARRY_SLOW := 0.6           # speed multiplier while hauling ore, ingots or scrap
+const DIVE_SPEED := 11.0
+const DIVE_TIME := 0.25
+const DIVE_COOLDOWN := 1.0
+const REACH := 2.2
+
+# --- Forge pipeline ---
+const MINE_HITS := 3
+const HEAT_PER_PUMP := 9.0
+const HEAT_DECAY := 6.0           # heat lost per second
+const SMELT_TIME := 3.0           # seconds in the heat band to make an ingot
+const OVERHEAT_MARGIN := 12.0     # this far above the band = slag
+const ANVIL_HITS := 4
+const ANVIL_MISSES_TO_RUIN := 3
+const BEAT_TIME := 1.2            # seconds for the beat marker to sweep across and back
+const ANVIL_ZONE := 0.18          # share of the sweep that counts as on-beat
+const INGOT_HOT_TIME := 14.0      # seconds an ingot stays hot enough to hammer
+const GRIND_HITS := 3
+const GRIND_ZONE := 0.22
+const WEAPON_DURABILITY := 10
+const WEAPON_DAMAGE := 10.0
+const TIER_BONUS := 0.5           # extra damage per tier above the door's armor
+const TOOL_DOOR_DAMAGE := 1.0     # pickaxe or hammer on the door
+const WEAK_SPOT_MULT := 2.0
+const WEAK_SPOT_WIDTH := 1.3
+const BOUNCE_DURABILITY_COST := 2
+const BURN_TIME := 0.6            # grabbing a hot ingot bare-handed: you drop it after this
+
+const MATERIALS := [
+	{"name": "Copper", "color": Color(0.85, 0.48, 0.25), "recipe": {"copper": 1}, "band": [30.0, 60.0]},
+	{"name": "Bronze", "color": Color(0.80, 0.62, 0.28), "recipe": {"copper": 1, "tin": 1}, "band": [40.0, 70.0]},
+	{"name": "Iron", "color": Color(0.50, 0.52, 0.58), "recipe": {"iron": 1, "coal": 1}, "band": [55.0, 80.0]},
+	{"name": "Steel", "color": Color(0.78, 0.82, 0.88), "recipe": {"iron": 1, "coal": 2}, "band": [65.0, 88.0]},
+	{"name": "Moonsilver", "color": Color(0.65, 0.78, 1.0), "recipe": {"moonsilver": 1}, "band": [60.0, 85.0]},
+	{"name": "Starmetal", "color": Color(1.0, 0.88, 0.35), "recipe": {"starmetal": 1}, "band": [75.0, 95.0]},
+]
+
+const ORE_COLORS := {
+	"copper": Color(0.85, 0.45, 0.2),
+	"tin": Color(0.75, 0.78, 0.8),
+	"iron": Color(0.45, 0.3, 0.25),
+	"coal": Color(0.12, 0.12, 0.12),
+	"moonsilver": Color(0.6, 0.75, 1.0),
+	"starmetal": Color(1.0, 0.85, 0.2),
+}
+
+const DOORS := [
+	{"area": "Quarry", "hp": 100.0, "tier": 0, "nodes": {"copper": 4}, "sky": Color(0.45, 0.5, 0.6)},
+	{"area": "Riverbank", "hp": 150.0, "tier": 1, "nodes": {"copper": 3, "tin": 3}, "sky": Color(0.4, 0.5, 0.55)},
+	{"area": "Coal pits", "hp": 200.0, "tier": 2, "nodes": {"iron": 3, "coal": 3, "copper": 1}, "sky": Color(0.4, 0.38, 0.38)},
+	{"area": "Ruined keep", "hp": 260.0, "tier": 3, "nodes": {"iron": 3, "coal": 4}, "sky": Color(0.35, 0.36, 0.42)},
+	{"area": "Moonlit cliffs", "hp": 320.0, "tier": 4, "nodes": {"moonsilver": 3, "iron": 2, "coal": 2}, "sky": Color(0.25, 0.3, 0.45)},
+	{"area": "Storm ridge", "hp": 380.0, "tier": 5, "nodes": {"iron": 3, "coal": 3, "moonsilver": 2}, "sky": Color(0.25, 0.25, 0.32)},
+	{"area": "Sky bridge", "hp": 440.0, "tier": 4, "nodes": {"moonsilver": 3, "iron": 2, "coal": 2}, "sky": Color(0.3, 0.32, 0.4)},
+	{"area": "The Storm Gate", "hp": 520.0, "tier": 5, "nodes": {"iron": 2, "coal": 2, "moonsilver": 3}, "sky": Color(0.18, 0.18, 0.25)},
+]
+
+const ROLES := [
+	{"name": "Miner", "tool": "pickaxe", "color": Color(0.85, 0.35, 0.3)},
+	{"name": "Smelter", "tool": "tongs", "color": Color(0.95, 0.65, 0.2)},
+	{"name": "Smith", "tool": "hammer", "color": Color(0.35, 0.55, 0.9)},
+	{"name": "Finisher", "tool": "bucket", "color": Color(0.35, 0.75, 0.45)},
+]
+
+const BUFFS := [
+	{"id": "rod", "name": "Lightning Rod", "desc": "First strike each area hits the rod"},
+	{"id": "hot_coals", "name": "Hot Coals", "desc": "Bellows pumps 30% more heat"},
+	{"id": "long_fuse", "name": "Long Fuse", "desc": "+30s on the storm timer"},
+	{"id": "featherweight", "name": "Featherweight", "desc": "Hauling barely slows you"},
+	{"id": "magnet", "name": "Magnet Gloves", "desc": "Your tool flies back after a strike"},
+	{"id": "sharp", "name": "Sharp Edges", "desc": "Weapons deal +25% door damage"},
+	{"id": "spare_handle", "name": "Spare Handle", "desc": "New weapons survive one break"},
+	{"id": "second_wind", "name": "Second Wind", "desc": "Strikes stun for half as long"},
+]
+
+const DEBUFFS := [
+	{"id": "static", "name": "Static Cling", "desc": "Lightning 50% more often"},
+	{"id": "wet_coal", "name": "Wet Coal", "desc": "Bellows pumps 30% less heat"},
+	{"id": "short_fuse", "name": "Short Fuse", "desc": "-30s on the storm timer"},
+	{"id": "butterfingers", "name": "Butterfingers", "desc": "Sprinting can make you drop things"},
+	{"id": "brittle", "name": "Brittle Batch", "desc": "Weapons wear 40% faster"},
+	{"id": "tiny_anvil", "name": "Tiny Anvil", "desc": "Anvil beat window is half as wide"},
+	{"id": "role_swap", "name": "Role Swap", "desc": "Everyone's tools rotate one smith"},
+	{"id": "big_heads", "name": "Big Heads", "desc": "Purely cosmetic. Very big heads"},
+]
+
+## Drop-in models. Put a .glb/.gltf path here (for example a KayKit file you copied into
+## res://assets/kaykit/) and that object uses the model instead of the placeholder shape.
+## Leave a value empty to keep the placeholder.
+const MODELS := {
+	"smith": "",
+	"pickaxe": "",
+	"tongs": "",
+	"hammer": "",
+	"bucket": "",
+	"weapon": "",
+	"ingot": "",
+	"ore_chunk": "",
+	"ore_node": "",
+	"furnace": "",
+	"anvil": "",
+	"grindstone": "",
+	"trough": "",
+	"door": "",
+}
+
+static func material_name(tier: int) -> String:
+	if tier < 0 or tier >= MATERIALS.size():
+		return "?"
+	return MATERIALS[tier]["name"]
+
+static func material_color(tier: int) -> Color:
+	if tier < 0 or tier >= MATERIALS.size():
+		return Color.GRAY
+	return MATERIALS[tier]["color"]
+
+## Tries to load a drop-in model. Returns null when none is set or the file is missing.
+static func try_model(key: String) -> Node3D:
+	var path: String = MODELS.get(key, "")
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var res = load(path)
+	if res is PackedScene:
+		return res.instantiate()
+	return null
