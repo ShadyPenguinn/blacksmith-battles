@@ -154,6 +154,20 @@ const ANIM_WORDS := {
 	"dive": ["dodge_forward", "dodge", "roll"],
 	"stun": ["death_a", "hit", "death"],
 }
+## The goofy run laid over the walk and run clips. Tune freely.
+const GOOFY := {
+	"hop": 0.22,              # meters each step bounces you up
+	"squash": 0.12,           # how much you squash on landing and stretch in the air
+	"waddle_deg": 10.0,       # side-to-side rock
+	"lean_deg": 10.0,         # lean into the run
+	"arms_out_deg": 72.0,     # arms flung out to the sides
+	"arm_flap_deg": 30.0,     # arms flap up and down each step
+	"elbow_straighten": 0.75, # 0 = elbows bend like the clip, 1 = arms stick straight out
+	"head_wobble_deg": 12.0,
+	"steps_per_meter": 1.3,   # higher = quicker little steps
+	"clip_speed": 1.35,       # walk and run clips play this much faster
+}
+
 ## One-shot animations for actions (clip names in the KayKit Rig_Medium packs).
 const ACTION_ANIMS := {
 	"pickaxe": "Pickaxe", "hammer": "Hammer", "tongs": "Work_A", "bucket": "Use_Item",
