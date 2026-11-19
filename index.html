@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length))}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()))}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -1229,7 +1229,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.hire){const k=d.hire,c=unitCost(k);if(S.ore>=c){const before=reached(k);S.ore-=c;S.units[k]=U(k)+1;if(SPLAT.shop)SPLAT.shop.act('+1 '+UN[k].n);
     const after=reached(k);if(after>before){toast(`${UN[k].n} milestone: ${UN[k].ms[after-1][1]}`);syncOrders()}save();render()}}
   else if(d.learn||d.rankup){const[h,k]=(d.learn||d.rankup).split('|'),tt=S.titles[+h],r=(tt[k]||0)+1,c=titleCost(r);
-    if(S.gold>=c&&r<=TITLE_MAX&&(tt[k]||Object.keys(tt).length<titleSlotsFor(+h))){S.gold-=c;tt[k]=r;save();render()}}
+    if(S.gold>=c&&r<=TITLE_MAX&&(tt[k]||Object.keys(tt).length<titleSlotsFor(+h))){S.gold-=c;tt[k]=r;if(SPLAT.barracks&&SPLAT.barracks.act)SPLAT.barracks.act(`${TITLES[k].n} ${'I'.repeat(r)}`);save();render()}}
   else if(d.forget){const[h,k]=d.forget.split('|');delete S.titles[+h][k];save();render()}
   else if(d.gacha){if((S.frags||0)>=FRAG_COST){S.frags-=FRAG_COST;const k=dropScroll(true);save();render();toast(`Your Scribes hand you ${scrollName(k)}`)}}
   else if(d.breakdown){const k=d.breakdown,g=k.split('|')[0];if(S.scrolls[k]>0){S.scrolls[k]--;if(!S.scrolls[k])delete S.scrolls[k];S.frags=(S.frags||0)+(FRAG_BACK[g]||2);save();render()}}
