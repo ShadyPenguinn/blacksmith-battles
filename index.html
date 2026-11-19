@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length))}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length));if(SPLAT.library&&SPLAT.library.count)SPLAT.library.count(Math.min(12,Object.keys(S.scrolls).length))}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -1212,7 +1212,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.etch)etchModal(+d.etch);
   else if(d.use)useScroll(d.use);
   else if(d.again)etchModal(etchId);
-  else if(d.buy){const s=SC[d.buy],st=d.buy==='Trait'?$('#btrait').value:$('#bstat').value;const pr=priceOf(d.buy);if(S.gold>=pr){S.gold-=pr;const k=d.buy+'|'+st;S.scrolls[k]=(S.scrolls[k]||0)+1;save();etchModal(etchId);chips()}}
+  else if(d.buy){const s=SC[d.buy],st=d.buy==='Trait'?$('#btrait').value:$('#bstat').value;const pr=priceOf(d.buy);if(S.gold>=pr){S.gold-=pr;const k=d.buy+'|'+st;S.scrolls[k]=(S.scrolls[k]||0)+1;if(SPLAT.library&&SPLAT.library.act)SPLAT.library.act('+1 scroll');save();etchModal(etchId);chips()}}
   else if(d.close!==undefined){closeModal();if(d.close)tab=d.close;render()}
   else if(d.eq){const id=+d.eq;if(S.squad.includes(id))S.squad=S.squad.map(i=>i===id?null:i);else{const k=S.squad.slice(0,squadSlots()).indexOf(null);if(k<0){toast('Squad is full. Remove someone first.');return}S.squad[k]=id}save();render()}
   else if(d.stat){const[id,st]=d.stat.split('|');statOpen=statOpen.id===+id&&statOpen.st===st?{id:null,st:null}:{id:+id,st};render()}
@@ -1231,7 +1231,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.learn||d.rankup){const[h,k]=(d.learn||d.rankup).split('|'),tt=S.titles[+h],r=(tt[k]||0)+1,c=titleCost(r);
     if(S.gold>=c&&r<=TITLE_MAX&&(tt[k]||Object.keys(tt).length<titleSlotsFor(+h))){S.gold-=c;tt[k]=r;if(SPLAT.barracks&&SPLAT.barracks.act)SPLAT.barracks.act(`${TITLES[k].n} ${'I'.repeat(r)}`);save();render()}}
   else if(d.forget){const[h,k]=d.forget.split('|');delete S.titles[+h][k];save();render()}
-  else if(d.gacha){if((S.frags||0)>=FRAG_COST){S.frags-=FRAG_COST;const k=dropScroll(true);save();render();toast(`Your Scribes hand you ${scrollName(k)}`)}}
+  else if(d.gacha){if((S.frags||0)>=FRAG_COST){S.frags-=FRAG_COST;const k=dropScroll(true);if(SPLAT.library&&SPLAT.library.act)SPLAT.library.act('+1 scroll');save();render();toast(`Your Scribes hand you ${scrollName(k)}`)}}
   else if(d.breakdown){const k=d.breakdown,g=k.split('|')[0];if(S.scrolls[k]>0){S.scrolls[k]--;if(!S.scrolls[k])delete S.scrolls[k];S.frags=(S.frags||0)+(FRAG_BACK[g]||2);save();render()}}
   else if(d.autopick){const c=autoCost();if(S.gold>=c&&U('prospector')>=10){S.gold-=c;S.autopick=(S.autopick||0)+1;save();render()}}
   else if(d.mast){const k=d.mast,c=mastCost(k);if(mastOpen(k)&&S.ore>=c){S.ore-=c;S.mast=S.mast||{};S.mast[k]=mastNext(k);save();render()}}
