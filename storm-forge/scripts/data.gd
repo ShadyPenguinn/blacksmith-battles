@@ -97,12 +97,14 @@ const TRIP := {
 	# Copper, Bronze, Iron, Steel, Moonsilver, Starmetal). Past that, each meter counts.
 	"min_drop": [0.0, 0.5, 1.0, 1.5, 2.0, 2.5],
 	"shape_per_meter": 0.5,   # shaping per meter of drop past the minimum
-	"solo": 0.65,             # one smith pulling all the way gets it this high (two get it to the top)
-	"slack": 1.0,             # meters you can stand from the rope before it starts lifting
-	"pull_len": 2.6,          # then this much further to pull it all the way
+	"slack": 1.0,             # meters you can stand from the rope before it starts lifting;
+	                          # past that, every meter you back up lifts the head a meter,
+	                          # so the taller the frame, the further you have to haul
 	"grab_reach": 1.5,        # how close to the rope handle you need to be to grab it
-	"rope_slow": 0.55,        # walking speed while hauling
-	"raise_speed": 2.2,       # meters per second the head can rise (it's heavy)
+	"rope_slow": 0.35,        # walking speed while hauling alone (it's heavy)...
+	"rope_help": 0.2,         # ...and this much quicker for each friend on the rope
+	"rope_gravity": 14.0,     # the loose rope and handle swing after you let go...
+	"rope_damping": 0.8,      # ...and settle this fast
 	"gravity": 26.0,          # how fast it drops
 	"shape_needed": 3.0,      # shaping to finish a sword (a 2 m drop on Copper is 1.0)
 	"min_power": 0.12,        # weaker than this is just a bump
@@ -233,6 +235,10 @@ const SMITH_ANIMS := [M + "anims/Rig_Medium_MovementBasic.glb", M + "anims/Rig_M
 	M + "anims/Rig_Medium_Tools.glb", M + "anims/Rig_Medium_MovementAdvanced.glb"]
 
 const CAM_OFFSET := Vector3(0, 11, 9.5)  # camera sits this far above and behind the smith you play
+## Walking from one area to the next, the camera glides over instead of jumping: it
+## eases across in "time" seconds, swinging up "rise" meters and back "back" meters
+## at the middle of the move so you see both rooms from overhead.
+const CAM_SWING := {"time": 1.6, "rise": 6.0, "back": 2.5}
 const SMITH_MODEL_SCALE := 0.75  # KayKit characters are ~2.4 m; this fits the 1.7 m capsule
 const SMITH_MODEL_YAW := PI       # KayKit models face +Z; Godot's forward is -Z
 ## Animation picked for each state: the first clip whose name contains one of these words.

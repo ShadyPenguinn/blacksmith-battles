@@ -38,6 +38,8 @@ var head: Node3D
 var rope_up: MeshInstance3D
 var ropes = []           # one rope line per smith, from the pulley to their hands
 var handle: MeshInstance3D
+var handle_pos := Vector3.ZERO   # the loose rope end swings around under the pulley
+var handle_vel := Vector3.ZERO
 var cold_said = 0.0
 var weak_said = 0.0
 var need_flag: MeshInstance3D
@@ -623,12 +625,12 @@ func pullers() -> Array:
 func _trip_tick(delta: float) -> void:
 	if not main.is_client() and head:
 		var g: Dictionary = SF.TRIP
-		var pull = 0.0
+		# The head hangs on the rope: it's as high as the furthest hauler has pulled.
+		var want = 0.0
 		for p in pullers():
-			pull += p.rope_pull()
-		var want = lift() * minf(1.0, pull * g["solo"])
-		if want > ham_h + 0.005:
-			ham_h = move_toward(ham_h, want, g["raise_speed"] * delta)
+			want = maxf(want, p.rope_pull())
+		if want >= ham_h:
+			ham_h = want
 			ham_v = 0.0
 		elif ham_h > want:
 			ham_v += g["gravity"] * delta
@@ -645,7 +647,7 @@ func _trip_tick(delta: float) -> void:
 					ham_v = 0.0
 		_follow_slot(Vector3(0, size.y * 0.5 + 0.15, 0))
 	if head:
-		_trip_visuals()
+		_trip_visuals(delta)
 	if need_flag:
 		need_flag.visible = slot != null and slot.kind == "ingot" and min_drop(slot.tier) > 0.0
 		if need_flag.visible:
@@ -665,7 +667,7 @@ func _shape_needed() -> float:
 	return SF.TRIP["shape_needed"] * (1.5 ** main.mod("tiny_anvil"))
 
 ## Head, the rope above it, the handle, and a rope from the pulley to each puller's hands.
-func _trip_visuals() -> void:
+func _trip_visuals(delta: float = 0.0) -> void:
 	head.position.y = _head_rest_y() + ham_h
 	var head_top = head.position.y + 0.35
 	rope_up.position = Vector3(0, (head_top + _top_y()) * 0.5, 0)
@@ -681,12 +683,40 @@ func _trip_visuals() -> void:
 		r.visible = true
 		_stretch(r, pulley, p.hand_position())
 	if pulling.is_empty():
+		_swing_handle(pulley, delta)
 		handle.visible = true
-		handle.global_position = handle_rest()
+		handle.global_position = handle_pos
 		ropes[0].visible = true
-		_stretch(ropes[0], pulley, handle_rest())
+		_stretch(ropes[0], pulley, handle_pos)
 	else:
 		handle.visible = false
+		# Follow the hands, so letting go starts the swing from there, moving.
+		var at = pulling[0].hand_position()
+		if delta > 0.0 and handle_pos != Vector3.ZERO:
+			handle_vel = (at - handle_pos) / delta
+		handle_pos = at
+
+## The loose rope end is a weight on a string from the pulley. The string is as long as
+## the rope that's out: the rest length plus however high the head still is, so as the
+## hammer drops the rope whips back up through the pulley, then swings and settles.
+func _swing_handle(pulley: Vector3, delta: float) -> void:
+	if handle_pos == Vector3.ZERO or delta <= 0.0:
+		handle_pos = handle_rest()
+		handle_vel = Vector3.ZERO
+		return
+	var g: Dictionary = SF.TRIP
+	handle_vel.y -= g["rope_gravity"] * delta
+	handle_vel *= maxf(0.0, 1.0 - g["rope_damping"] * delta)
+	handle_pos += handle_vel * delta
+	var length = (pulley.y - handle_rest().y) + ham_h
+	var d = handle_pos - pulley
+	if d.length() > length:
+		var dir = d.normalized()
+		handle_pos = pulley + dir * length
+		var out = handle_vel.dot(dir)
+		if out > 0.0:
+			handle_vel -= dir * out   # the rope goes taut: only the swing is left
+	handle_pos.y = maxf(handle_pos.y, global_position.y - size.y * 0.5 + 0.1)
 
 func _stretch(r: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 	var mid = (a + b) * 0.5

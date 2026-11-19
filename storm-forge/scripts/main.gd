@@ -49,6 +49,11 @@ var sun: DirectionalLight3D
 var cam: Camera3D
 var hud: CanvasLayer
 var shake = 0.0
+var cam_lean := Vector3.ZERO      # the area middle the camera leans toward (eases between areas)
+var lean_from := Vector3.ZERO
+var lean_to := Vector3.ZERO
+var lean_t := -1.0                # >= 0 while gliding from one area to the next
+var cam_look := Vector3.ZERO      # where the camera looks, smoothed so it never snaps
 var flash_t = 0.0
 
 func _ready() -> void:
@@ -726,11 +731,37 @@ func _update_camera(delta: float) -> void:
 	var p = players[controlled]
 	# Lean toward the middle of the area you're standing in (not the newest one), so
 	# walking back through an open door keeps the camera on you.
-	var focus: Vector3 = p.global_position.lerp(area_center_at(p.global_position), 0.35)
-	var want = focus + SF.CAM_OFFSET
-	cam.global_position = cam.global_position.lerp(want, clampf(delta * 4.0, 0.0, 1.0)) if cam.global_position != Vector3.ZERO else want
+	# Crossing into another area glides the lean over with an overhead swing.
+	var sw: Dictionary = SF.CAM_SWING
+	var center = area_center_at(p.global_position)
+	var first = cam.global_position == Vector3.ZERO
+	if first:
+		cam_lean = center
+		lean_to = center
+	elif center != lean_to:
+		lean_from = cam_lean
+		lean_to = center
+		lean_t = 0.0
+	var swing = 0.0
+	if lean_t >= 0.0:
+		lean_t += delta
+		var k = clampf(lean_t / sw["time"], 0.0, 1.0)
+		cam_lean = lean_from.lerp(lean_to, smoothstep(0.0, 1.0, k))
+		swing = sin(k * PI)
+		if k >= 1.0:
+			lean_t = -1.0
+	var focus: Vector3 = p.global_position.lerp(cam_lean, 0.35)
+	var want = focus + SF.CAM_OFFSET + Vector3(0, sw["rise"], sw["back"]) * swing
+	var look = focus + Vector3(0, 0.5, -1)
+	if first:
+		cam.global_position = want
+		cam_look = look
+	else:
+		var k2 = clampf(delta * 4.0, 0.0, 1.0)
+		cam.global_position = cam.global_position.lerp(want, k2)
+		cam_look = cam_look.lerp(look, k2)
 	shake = maxf(0.0, shake - delta)
-	cam.look_at(focus + Vector3(0, 0.5, -1), Vector3.UP)
+	cam.look_at(cam_look, Vector3.UP)
 	if shake > 0.0:
 		cam.rotation += Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * shake * 0.04
 
