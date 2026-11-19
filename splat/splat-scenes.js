@@ -59,6 +59,12 @@
       hit: [343, 64], burst: ['#fff4c0', '#ffe08a', '#d8e4f0'],
       popArea: [272, 334, 44, 62],
       glows: []
+    },
+    fight: {
+      dur: { idle: 1, act: 0.6 }, loops: {}, landAt: 0.2,
+      hit: [280, 122], burst: ['#ffe08a', '#ff9a40', '#fff4c0'],
+      popArea: [214, 266, 60, 80],
+      glows: [{ x: 205, y: 95, r: 22, c: '255,170,80', a: 0.24 }, { x: 274, y: 95, r: 22, c: '255,170,80', a: 0.24 }]
     }
   };
   const PIECE = { Sword: 'sword', Axe: 'axe', Spear: 'spear', Shield: 'shield', Warhammer: 'hammer' };

@@ -1,6 +1,6 @@
 // Offline support: the game page is fetched fresh when online (so updates arrive) and served from cache when offline.
-const C='bb-v7';
-self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./','index.html','splat/splat-scenes.js','splat/forge.json','splat/forge.png','splat/mine.json','splat/mine.png','splat/jobs.json','splat/jobs.png','splat/orders.json','splat/orders.png','splat/armory.json','splat/armory.png','splat/barracks.json','splat/barracks.png','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png'])));self.skipWaiting()});
+const C='bb-v8';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./','index.html','splat/splat-scenes.js','splat/forge.json','splat/forge.png','splat/mine.json','splat/mine.png','splat/jobs.json','splat/jobs.png','splat/orders.json','splat/orders.png','splat/armory.json','splat/armory.png','splat/barracks.json','splat/barracks.png','splat/fight.json','splat/fight.png','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png'])));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET')return;
   e.respondWith(fetch(r.url.startsWith(self.location.origin)?new Request(r,{cache:'no-cache'}):r).then(res=>{if(res.ok&&(r.url.startsWith(self.location.origin)||r.url.includes('fonts.g')))caches.open(C).then(c=>c.put(r,res.clone()));return res}).catch(()=>caches.match(r,{ignoreSearch:true}).then(m=>m||caches.match('index.html'))))});

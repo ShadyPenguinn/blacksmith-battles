@@ -43,7 +43,8 @@ const SCENES = {
   jobs: generic('toy-jobs.js', ['--zoom', '2.0', '--target', '0,1.7,-0.8'], { idle: 1, act: 0.6 }, 12, 'n'),
   orders: generic('toy-orders.js', ['--zoom', '2.3', '--target', '0,1.25,-0.8'], { idle: 1, act: 0.6 }, 4, 'c'),
   armory: generic('toy-armory.js', ['--zoom', '2.2', '--target', '0,1.5,-0.8'], { idle: 1, act: 0.6 }, 12, 'w'),
-  barracks: generic('toy-barracks.js', ['--zoom', '2.2', '--target', '0,1.4,-0.8'], { idle: 1, act: 0.6 }, 12, 'h')
+  barracks: generic('toy-barracks.js', ['--zoom', '2.2', '--target', '0,1.4,-0.8'], { idle: 1, act: 0.6 }, 12, 'h'),
+  fight: generic('toy-fight.js', ['--zoom', '1.8', '--target', '0,1.8,-1.0'], { idle: 1, act: 0.6 }, 12, 'h')
 };
 function generic(file, view, dur, nProps, prefix) {
   return {
