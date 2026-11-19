@@ -54,9 +54,17 @@ const VEIN_RESPAWN := 30.0        # seconds between lightning cracking open a ne
 const VEIN_EXTRA := 2             # new veins can push an area this far past its starting count
 const AREA_STEP := 27.0           # each new area sits this far past the last one
 const HEAT_PER_PUMP := 9.0
+## A finished ingot shoots out of the chimney and lands somewhere random nearby.
+const CHIMNEY := {
+	"up": 7.5,                # upward launch speed (m/s)
+	"min_speed": 2.0,         # sideways speed range (m/s): about 4-9 m away
+	"max_speed": 4.0,
+	"spin": 0.6,              # tumble
+}
 ## Stomp bellows: jump on the accordions either side of the furnace to blow air in.
 const BELLOWS := {
-	"size": Vector3(1.3, 0.6, 1.3),
+	"size": Vector3(2.4, 0.8, 1.2),  # the model (MODELS["bellows"]) is fitted to this box
+	"nozzle_in": 0.3,         # the nozzle tip pokes this far into the furnace's side
 	"heat": 11.0,             # heat per stomp (a belly flop counts 1.5x)
 	"min_fall": 3.5,          # you have to land on it (walking on doesn't pump)
 	"boing": 2.5,             # it springs you back up a little
@@ -213,6 +221,10 @@ const MODELS := {
 	"ore_chunk": M + "resources/Copper_Nugget_Large.gltf",
 	"ore_node": M + "dungeon/rocks.gltf",
 	"furnace": "",
+	"bellows": M + "stations/bellows_giant.glb",
+	# KayKit-style stone forge, used at real size (not fitted): "Glow" is the fire the heat
+	# colours, "Cap" pops open on "Pop", "Spout" is where finished ingots fly out.
+	"furnace_model": M + "stations/furnace_forge.glb",  # nozzle +X, lid hinged at the nozzle, "Stomp" anim
 	"anvil": M + "tools/anvil.gltf",
 	"trough": "",
 	"door": "",

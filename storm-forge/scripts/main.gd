@@ -347,10 +347,11 @@ func build_area(lay: Dictionary) -> void:
 	trough.area = i
 	anvil.add_trip_hammer()
 	trough.add_dunk_tank()
-	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
-	fire.position = Vector3(0, -0.5, 1.12)
-	furnace.add_child(fire)
-	furnace.mouth = fire
+	if not furnace.use_furnace_model():
+		var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
+		fire.position = Vector3(0, -0.5, 1.12)
+		furnace.add_child(fire)
+		furnace.mouth = fire
 	furnace.add_bellows()
 	for n in lay["nodes"]:
 		_add_node(n)
@@ -1214,6 +1215,9 @@ func apply_event(kind: String, data) -> void:
 		"burp":
 			if furnace:
 				furnace.burp_fx()
+		"chimney":
+			if furnace:
+				furnace.pop_cap()
 		"slam":
 			if anvil:
 				anvil.slam_fx(data)

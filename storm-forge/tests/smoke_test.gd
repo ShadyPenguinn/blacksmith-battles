@@ -139,6 +139,8 @@ func _run() -> void:
 		t += 1
 	var ingots = items_of("ingot")
 	check(ingots.size() == 1 and ingots[0].tier == 0, "bellows heat in the band makes a copper ingot")
+	check(main.furnace.spout != null, "the furnace uses the stone forge model")
+	check(ingots.size() == 1 and ingots[0].global_position.y > 2.5, "the ingot shoots out of the chimney")
 
 	# Stomp bellows: jumping onto one heats the furnace; over-stomping burps.
 	main.lightning.next_in = 9999.0
@@ -147,8 +149,11 @@ func _run() -> void:
 	ingots[0].global_position = main.furnace.global_position + Vector3(0.8, -0.6, 2.0)
 	ingots[0].linear_velocity = Vector3.ZERO
 	main.furnace.last_stomp = -10.0   # the smelting loop's last stomp mustn't count as one-footed
+	main.furnace.stomp_log.clear()   # the pumping above mustn't make this landing burp
 	var heat0 = main.furnace.heat
 	var bel = main.furnace.bellows[1]
+	var bel_anim = main.furnace._bellows_anim(bel)
+	check(bel_anim != null and bel_anim.has_animation("Stomp"), "the bellows use the giant model with its Stomp animation")
 	put(smelter, bel.global_position + Vector3(0, 0, 0))
 	smelter.global_position = bel.global_position + Vector3(0, 2.2, 0)
 	for i in 90:
