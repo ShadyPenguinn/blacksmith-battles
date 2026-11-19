@@ -66,6 +66,9 @@ h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--mute
 .loc.locked .sky{filter:grayscale(1) brightness(.45)}
 .loc.locked .bld,.loc.locked .glow,.loc.locked .crowd{opacity:.15}
 .loc.locked .sign{color:var(--muted)}
+/* Splat art (Nov 18): the Mine and Forge spots draw pre-rendered ink-studio scenes on a canvas (splat/splat-scenes.js); the placeholder shapes stay as the fallback */
+.loc.splat-on .sky,.loc.splat-on .glow,.loc.splat-on .bld,.loc.splat-on .gnd{display:none}
+.loc.locked .splat-cv{filter:grayscale(1) brightness(.45)}
 .you{position:absolute;left:50%;bottom:30px;width:9px;height:16px;margin-left:-4px;border-radius:3px 3px 1px 1px;background:var(--ember);z-index:2;box-shadow:0 0 10px rgba(255,138,61,.5)}
 .you::before{content:"";position:absolute;left:1px;top:-8px;width:8px;height:8px;border-radius:50%;background:#ffd2a8}
 .you.walk{animation:walk .28s ease-in-out infinite}.you.left{transform:scaleX(-1)}
@@ -228,6 +231,7 @@ label.ck{display:flex;gap:6px;align-items:center;font-size:13px}
 <div id="modal"></div>
 <div id="toast" class="toast" hidden></div>
 
+<script src="splat/splat-scenes.js"></script>
 <script>
 (()=>{
 const ME={};window.__bbToyOwner=ME;const owns=()=>window.__bbToyOwner===ME; // only the newest copy of the page runs
@@ -539,7 +543,9 @@ const BLD={
   barracks:'<div style="width:130px;height:44px;background:#3a3028"></div><div style="position:absolute;left:-6px;top:-18px;width:142px;height:20px;background:#4a3a2c;clip-path:polygon(6% 0,94% 0,100% 100%,0 100%)"></div><div style="position:absolute;left:58px;top:-56px;width:2px;height:40px;background:#8a7a66"></div><div style="position:absolute;left:60px;top:-56px;width:20px;height:14px;background:#c0503a"></div>',
   gate:'<div style="width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:96px;bottom:0;width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:30px;bottom:44px;width:70px;height:26px;background:#3a3434"></div><div style="position:absolute;left:34px;bottom:0;width:62px;height:44px;background:#0b0809;border-radius:31px 31px 0 0"></div>'};
 let worldIdx=-1;
-function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L=>`<div class="loc" data-loc="${L.t}"><div class="sky" style="background:${L.sky}"></div><div class="glow" style="left:calc(28% - 30px);background:${L.light}"></div><div class="bld" style="left:22%">${BLD[L.bld]}</div><div class="crowd"></div><div class="gnd"></div><div class="sign">${L.n}</div></div>`).join('')}
+function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L=>`<div class="loc" data-loc="${L.t}"><div class="sky" style="background:${L.sky}"></div><div class="glow" style="left:calc(28% - 30px);background:${L.light}"></div><div class="bld" style="left:22%">${BLD[L.bld]}</div><div class="crowd"></div><div class="gnd"></div><div class="sign">${L.n}</div></div>`).join('');
+  if(window.SplatScenes&&SplatScenes.supported)for(const k of ['mine','forge']){const el=st.querySelector(`[data-loc="${k}"]`);if(el)try{SPLAT[k]=SplatScenes.mount(el,k)}catch(e){}}}
+const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -827,6 +833,7 @@ function startForge(){
   const bc=blankCost(pick.mat); if(S.ore<bc){toast(`Need ${fmtN(bc)} ore. Dig in the Mine.`);return}
   S.ore-=bc; let core=null;if(pick.core&&(S.cores[pick.core]||0)>0){core=pick.core;S.cores[core]--;if(!S.cores[core])pick.core=null}
   F={arch:pick.arch,mat:pick.mat,core,size:blankSize(),res:[],pos:0,dir:1,speed:62,zl:0,last:0,done:false,ring:isMagic(pick.arch),s:3,rx:50,ry:50};
+  if(SPLAT.forge&&!F.ring)SPLAT.forge.start(F.arch);
   placeZone(); render(); loop.t=performance.now(); requestAnimationFrame(loop);
 }
 function placeZone(){const w=zoneW();F.zl=8+Math.random()*(84-w);if(F.ring){F.rx=14+Math.random()*72;F.ry=24+Math.random()*52;F.s=3}}
@@ -857,7 +864,7 @@ function strike(force){
   else if(p>=F.zl+w*.3&&p<=F.zl+w*.7)r='P';
   else if(p>=F.zl&&p<=F.zl+w)r='G';
   else r='M';
-  F.last=now;F.res.push(r);
+  F.last=now;F.res.push(r);if(SPLAT.forge&&!F.ring)SPLAT.forge.hit(r);
   let streak=0;for(let i=F.res.length-1;i>=0&&F.res[i]==='P';i--)streak++;
   const msg={P:streak>4?`Perfect x${streak}! +${perfectStars(streak)} stars`:'Perfect!',G:'Good',M:F.ring?'The binding slips':'Miss',O:'Overheated!'}[r];
   $('#callout').textContent=msg;$('#pips').innerHTML=pipsHtml();
@@ -868,6 +875,7 @@ function strike(force){
 }
 function sparks(p,n,y=50){const s=$('#sparks');if(!s)return;for(let i=0;i<n;i++){const e=document.createElement('span');e.className='spark';e.style.left=p+'%';e.style.top=y+'%';e.style.setProperty('--dx',(Math.random()*120-60)+'px');e.style.setProperty('--dy',(Math.random()*-60-10)+'px');s.appendChild(e);setTimeout(()=>e.remove(),520)}}
 function finishForge(){
+  if(SPLAT.forge)SPLAT.forge.finish();
   const raw=scoreOf(F.res),missed=F.res.some(r=>r==='M'||r==='O'),lost=missed?missLoss(raw):0,score=Math.max(0,raw-lost),size=F.size; // a miss costs a third of your stars (at least 3)
   const g=gradeOf(score);
   if(score<=0){const ring=F.ring;F=null;save();showModal(`<div class="roll"><div class="glyph crack">${score}</div><div class="result">The ${ring?'binding unravels':'blank cracks apart'}</div>
@@ -1161,7 +1169,7 @@ function autoRow(){if(U('prospector')<10)return '';const c=autoCost(),l=S.autopi
 function mastRows(){return UNITS.filter(u=>mastOpen(u.k)||(S.mast||{})[u.k]).map(u=>{const n=(S.mast||{})[u.k]||0,open=mastOpen(u.k),c=mastCost(u.k);
   return `<div class="order"><div><b>${u.n} mastery</b> · level ${n}<div class="note">${u.n}s dig +${n*10}% ore now. Every 100 ${u.n}s (and 10 more Researchers) opens another +10%.</div></div>${open?`<button class="b sm" data-mast="${u.k}" ${S.ore<c?'disabled':''}>${fmtN(c)} ore</button>`:`<span class="note">Next at ${100*(n+1)} ${u.n}s, ${10*(n+1)} Researchers</span>`}</div>`}).join('')}
 function dig(btn,e){
-  const n=orePerTap();S.ore+=n;tally().taps=(tally().taps||0)+1;chips();
+  const n=orePerTap();S.ore+=n;tally().taps=(tally().taps||0)+1;chips();if(SPLAT.mine)SPLAT.mine.swing();
   const r=btn.getBoundingClientRect(),p=document.createElement('span');p.className='pop';p.textContent=`+${n} ore`;
   p.style.left=((e.clientX||r.left+r.width/2)-r.left)+'px';p.style.top=((e.clientY||r.top+r.height/2)-r.top)+'px';btn.appendChild(p);setTimeout(()=>p.remove(),700);
   btn.classList.remove('bump');void btn.offsetWidth;btn.classList.add('bump');
