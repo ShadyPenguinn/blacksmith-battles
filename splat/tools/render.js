@@ -45,7 +45,8 @@ const SCENES = {
   armory: generic('toy-armory.js', ['--zoom', '2.2', '--target', '0,1.5,-0.8'], { idle: 1, act: 0.6 }, 12, 'w'),
   barracks: generic('toy-barracks.js', ['--zoom', '2.2', '--target', '0,1.4,-0.8'], { idle: 1, act: 0.6 }, 12, 'h'),
   fight: generic('toy-fight.js', ['--zoom', '1.8', '--target', '0,1.8,-1.0'], { idle: 1, act: 0.6 }, 12, 'h'),
-  library: generic('toy-library.js', ['--zoom', '2.0', '--target', '0,1.8,-1.0'], { idle: 1, act: 0.6 }, 12, 's')
+  library: generic('toy-library.js', ['--zoom', '2.0', '--target', '0,1.8,-1.0'], { idle: 1, act: 0.6 }, 12, 's'),
+  sanctum: generic('toy-sanctum.js', ['--zoom', '2.0', '--target', '0,1.7,-1.0'], { idle: 1, act: 0.6 }, 8, 'r')
 };
 function generic(file, view, dur, nProps, prefix) {
   return {
