@@ -41,7 +41,8 @@ const SCENES = {
   // the generic shape used by the other spots: an idle loop, one act played on the tab's main button, optional props
   // switched on one at a time with TOY_PROP (each kept as its own cut-out, shown by count in the toy)
   jobs: generic('toy-jobs.js', ['--zoom', '2.0', '--target', '0,1.7,-0.8'], { idle: 1, act: 0.6 }, 12, 'n'),
-  orders: generic('toy-orders.js', ['--zoom', '2.3', '--target', '0,1.25,-0.8'], { idle: 1, act: 0.6 }, 4, 'c')
+  orders: generic('toy-orders.js', ['--zoom', '2.3', '--target', '0,1.25,-0.8'], { idle: 1, act: 0.6 }, 4, 'c'),
+  armory: generic('toy-armory.js', ['--zoom', '2.2', '--target', '0,1.5,-0.8'], { idle: 1, act: 0.6 }, 12, 'w')
 };
 function generic(file, view, dur, nProps, prefix) {
   return {
