@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://forge_test.gd" id="1_test"]
 [ext_resource type="Script" path="res://addons/splats/splat_scene.gd" id="2_scene"]
@@ -6,6 +6,20 @@
 [ext_resource type="Shader" path="res://addons/splats/shaders/splat_present.gdshader" id="4_present"]
 [ext_resource type="Script" path="res://driven_instance.gd" id="5_driven"]
 [ext_resource type="Script" path="res://sparks.gd" id="6_sparks"]
+
+[sub_resource type="Gradient" id="Gradient_glow"]
+colors = PackedColorArray(1, 0.55, 0.2, 0.55, 1, 0.4, 0.1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_glow"]
+gradient = SubResource("Gradient_glow")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
+blend_mode = 1
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_present"]
 shader = ExtResource("4_present")
@@ -20,6 +34,10 @@ unique_name_in_owner = true
 unique_name_in_owner = true
 script = ExtResource("5_driven")
 asset = "res://splats/forge.bytes"
+
+[node name="Fire" type="Node3D" parent="World"]
+script = ExtResource("3_instance")
+asset = "res://splats/fire.bytes"
 
 [node name="Sword" type="Node3D" parent="World"]
 unique_name_in_owner = true
@@ -79,6 +97,13 @@ offset_right = 880.0
 offset_bottom = 200.0
 theme_override_font_sizes/font_size = 28
 autowrap_mode = 3
+
+[node name="Glow" type="TextureRect" parent="."]
+unique_name_in_owner = true
+material = SubResource("CanvasItemMaterial_add")
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_glow")
+expand_mode = 1
 
 [node name="Sparks" type="Control" parent="."]
 unique_name_in_owner = true

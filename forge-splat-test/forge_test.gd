@@ -22,6 +22,9 @@ const RECOVER: Vector2 = Vector2(2.25, 2.5)
 const SLAMS_PER_PIECE: int = 5
 const IDLE_AFTER: float = 4.0
 const HIDDEN: Vector3 = Vector3(0.0, -60.0, 0.0)
+## The furnace mouth, for the glow and the embers.
+const MOUTH: Vector3 = Vector3(-1.95, 0.55, -0.62)
+const MOUTH_TOP: Vector3 = Vector3(-1.95, 0.85, -0.62)
 
 enum State { IDLE, RAISE, READY, SLAM, RECOVER, LOWER }
 
@@ -32,6 +35,7 @@ enum State { IDLE, RAISE, READY, SLAM, RECOVER, LOWER }
 @onready var _hint: Label = %Hint
 @onready var _smith = %Forge
 @onready var _sparks: Control = %Sparks
+@onready var _glow: TextureRect = %Glow
 @onready var _pieces: Array[Node3D] = [%Sword, %Axe, %Spear]
 
 var _state: State = State.IDLE
@@ -44,6 +48,9 @@ var _next_status: float = 0.0
 var _frames: int = 0
 var _elapsed: float = 0.0
 var _low: float = 999.0
+var _last_tap_ms: int = -1000
+var _flicker: float = 0.0
+var _ember_wait: float = 0.0
 
 
 func _ready() -> void:
@@ -63,6 +70,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
 			or (event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE)
 	if tap:
+		# one physical tap can arrive as both a touch and a mouse click on some browsers
+		var now: int = Time.get_ticks_msec()
+		if now - _last_tap_ms < 80:
+			return
+		_last_tap_ms = now
 		_tap()
 
 
@@ -128,6 +140,7 @@ func _process(delta: float) -> void:
 				_hint.text = "Tap to forge"
 				_go(State.IDLE)
 	_smith.frame = clampi(floori(clip_time * FPS), 0, 59)
+	_fire_light(delta)
 	_fps(delta)
 
 
@@ -141,6 +154,23 @@ func _hit() -> void:
 		_next_piece_later()
 	else:
 		_hint.text = "%s: %d / %d" % [["Sword", "Axe", "Spear"][_piece], _slams, SLAMS_PER_PIECE]
+
+
+## The fire's glow breathes and stutters; embers drift up from the mouth.
+func _fire_light(delta: float) -> void:
+	var t: float = Time.get_ticks_msec() / 1000.0
+	var target: float = 0.55 + 0.25 * sin(t * 7.3) * sin(t * 2.1 + 1.0) + 0.12 * sin(t * 17.0)
+	_flicker = lerpf(_flicker, target, minf(1.0, delta * 12.0))
+	var s: float = _art_pixel()
+	var size: float = 150.0 * s
+	_glow.size = Vector2(size, size * 0.8)
+	_glow.position = _to_screen(MOUTH) + _sparks.global_position - _glow.size * 0.5
+	_glow.modulate.a = clampf(_flicker, 0.0, 1.0)
+	_ember_wait -= delta
+	if _ember_wait <= 0.0:
+		_ember_wait = randf_range(0.15, 0.45)
+		_sparks.pixel = s
+		_sparks.ember(_to_screen(MOUTH_TOP))
 
 
 func _next_piece_later() -> void:
