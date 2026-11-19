@@ -1,0 +1,61 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://forge_test.gd" id="1_test"]
+[ext_resource type="Script" path="res://addons/splats/splat_scene.gd" id="2_scene"]
+[ext_resource type="Script" path="res://addons/splats/splat_instance.gd" id="3_instance"]
+[ext_resource type="Shader" path="res://addons/splats/shaders/splat_present.gdshader" id="4_present"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_present"]
+shader = ExtResource("4_present")
+
+[node name="ForgeTest" type="Node"]
+script = ExtResource("1_test")
+
+[node name="World" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Forge" type="Node3D" parent="World"]
+script = ExtResource("3_instance")
+asset = "res://splats/forge.bytes"
+
+[node name="Camera" type="Camera3D" parent="World"]
+unique_name_in_owner = true
+fov = 30.0
+near = 0.1
+far = 40.0
+
+[node name="SplatScene" type="Node" parent="." node_paths=PackedStringArray("camera", "instances_root")]
+unique_name_in_owner = true
+script = ExtResource("2_scene")
+camera = NodePath("../World/Camera")
+instances_root = NodePath("../World")
+art_size = Vector2i(300, 210)
+
+[node name="Backdrop" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.027, 0.031, 0.043, 1)
+
+[node name="Picture" type="TextureRect" parent="."]
+unique_name_in_owner = true
+texture_filter = 1
+material = SubResource("ShaderMaterial_present")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Status" type="Label" parent="."]
+unique_name_in_owner = true
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 880.0
+offset_bottom = 200.0
+theme_override_font_sizes/font_size = 28
+autowrap_mode = 3
