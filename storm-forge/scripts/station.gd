@@ -37,6 +37,8 @@ var rope_up: MeshInstance3D
 var ropes = []           # one rope line per smith, from the pulley to their hands
 var handle: MeshInstance3D
 var cold_said = 0.0
+var weak_said = 0.0
+var need_flag: MeshInstance3D
 # Dunk tank
 var seat: Node3D         # hinge of the seat over the water
 var target: Node3D
@@ -45,6 +47,7 @@ var dunk_t = -1.0        # >= 0 while a sword is dropping in and riding the slid
 var fly_t = -1.0         # >= 0 while a sword is flying in from the anvil
 var fly_from = Vector3.ZERO
 var dead = false         # a station left behind in an earlier area: just scenery now
+var area = 0             # which area this station is in (deeper areas are harder)
 
 func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Dictionary = {}) -> void:
 	main = p_main
@@ -436,8 +439,17 @@ const POST_X := 0.85
 const POST_Z := -0.55
 const PULLEY_X := 1.55
 
+## How far the head rises at full pull. The frame grows taller each area.
+func lift() -> float:
+	return SF.TRIP["lift"] + SF.TRIP["lift_per_area"] * area
+
 func _top_y() -> float:
-	return -size.y * 0.5 + 3.9
+	return -size.y * 0.5 + lift() + 1.9
+
+## How far the head must drop before it shapes this metal at all.
+func min_drop(tier: int) -> float:
+	var m: Array = SF.TRIP["min_drop"]
+	return m[clampi(tier, 0, m.size() - 1)]
 
 func _head_rest_y() -> float:
 	return size.y * 0.5 + 0.62
@@ -447,13 +459,22 @@ func _head_rest_y() -> float:
 func add_trip_hammer() -> void:
 	var gy = -size.y * 0.5
 	var wood = Color(0.45, 0.3, 0.18)
+	var tall = _top_y() - gy
 	for x in [-POST_X, POST_X]:
-		var post = Build.box(Vector3(0.25, 3.9, 0.25), wood)
-		post.position = Vector3(x, gy + 1.95, POST_Z)
+		var post = Build.box(Vector3(0.25, tall, 0.25), wood)
+		post.position = Vector3(x, gy + tall * 0.5, POST_Z)
 		add_child(post)
-		var cs = Build.box_shape(Vector3(0.25, 3.9, 0.25))
+		var cs = Build.box_shape(Vector3(0.25, tall, 0.25))
 		cs.position = post.position
 		add_child(cs)
+	# Height marks every half meter, and a red flag at the drop this metal needs.
+	for i in int(lift() / 0.5) + 1:
+		var tick = Build.box(Vector3(0.3, 0.03, 0.04), Color(0.9, 0.85, 0.7))
+		tick.position = Vector3(-POST_X, _head_rest_y() - 0.35 + i * 0.5, POST_Z + 0.14)
+		add_child(tick)
+	need_flag = Build.box(Vector3(0.45, 0.16, 0.05), Color(0.9, 0.12, 0.1), 0.6)
+	need_flag.visible = false
+	add_child(need_flag)
 	var beam = Build.box(Vector3(PULLEY_X + POST_X + 0.3, 0.25, 0.3), wood.darkened(0.15))
 	beam.position = Vector3((PULLEY_X - POST_X) * 0.5, _top_y(), POST_Z)
 	add_child(beam)
@@ -510,7 +531,7 @@ func _trip_tick(delta: float) -> void:
 		var pull = 0.0
 		for p in pullers():
 			pull += p.rope_pull()
-		var want = g["lift"] * minf(1.0, pull * g["solo"])
+		var want = lift() * minf(1.0, pull * g["solo"])
 		if want > ham_h + 0.005:
 			ham_h = move_toward(ham_h, want, g["raise_speed"] * delta)
 			ham_v = 0.0
@@ -519,7 +540,7 @@ func _trip_tick(delta: float) -> void:
 			ham_h -= ham_v * delta
 			if ham_h <= want:
 				if want <= 0.001:
-					var power = ham_v * ham_v / (2.0 * g["gravity"] * g["lift"])
+					var power = ham_v * ham_v / (2.0 * g["gravity"] * lift())
 					ham_h = 0.0
 					ham_v = 0.0
 					if power >= g["min_power"]:
@@ -530,11 +551,18 @@ func _trip_tick(delta: float) -> void:
 		_follow_slot(Vector3(0, size.y * 0.5 + 0.15, 0))
 	if head:
 		_trip_visuals()
+	if need_flag:
+		need_flag.visible = slot != null and slot.kind == "ingot" and min_drop(slot.tier) > 0.0
+		if need_flag.visible:
+			need_flag.position = Vector3(-POST_X - 0.1, _head_rest_y() - 0.35 + min_drop(slot.tier), POST_Z + 0.16)
 	if slot == null:
 		label.text = "Anvil\nbring a hot ingot"
 	elif slot.kind == "ingot" and slot.hot > 0.0:
 		var need = _shape_needed()
-		label.text = "%s  %d%%\npull the rope back!" % [slot.display_name(), int(100.0 * minf(shape / need, 1.0))]
+		var hint = "pull the rope back!"
+		if min_drop(slot.tier) > 0.0:
+			hint = "drop it from above the red flag!"
+		label.text = "%s  %d%%\n%s" % [slot.display_name(), int(100.0 * minf(shape / need, 1.0)), hint]
 	else:
 		label.text = slot.display_name() + "\ntoo cold: reheat in the furnace"
 
@@ -574,7 +602,7 @@ func _stretch(r: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 	basis.z *= len
 	r.global_transform = Transform3D(basis, mid)
 
-## Host: the head hit the anvil. power 0..1 (1 = dropped from the very top).
+## Host: the head hit the anvil. power 0..1 (1 = dropped from the very top of the frame).
 func slam(power: float) -> void:
 	var g: Dictionary = SF.TRIP
 	slam_fx(power)
@@ -597,7 +625,14 @@ func slam(power: float) -> void:
 			cold_said = now
 			main.toast("CLANG! Too cold to shape. Reheat it in the furnace.")
 		return
-	shape += power
+	var past = power * lift() - min_drop(slot.tier)
+	if past <= 0.0:
+		var now2 = Time.get_ticks_msec() / 1000.0
+		if now2 - weak_said > 3.0:
+			weak_said = now2
+			main.toast("Clank. %s is too hard: drop the hammer from above the red flag." % SF.material_name(slot.tier))
+		return
+	shape += past * g["shape_per_meter"]
 	if shape < _shape_needed():
 		return
 	# Shaped: the blade springs off the anvil and flies onto the dunk tank seat.
@@ -641,13 +676,17 @@ func add_dunk_tank() -> void:
 	add_child(water)
 	var ty = gy + SF.DUNK["target_height"]
 	var rz = -size.z * 0.5 - 0.15
-	for x in [-SF.DUNK["range"] - 0.6, SF.DUNK["range"] + 0.6]:
+	for x in [-target_range() - 0.6, target_range() + 0.6]:
 		var post = Build.box(Vector3(0.18, ty - gy + 0.3, 0.18), wood)
 		post.position = Vector3(x, (gy + ty + 0.3) * 0.5, rz - 0.15)
 		add_child(post)
-	var rail = Build.box(Vector3(SF.DUNK["range"] * 2.0 + 1.4, 0.1, 0.1), Color(0.3, 0.3, 0.32))
+	var rail = Build.box(Vector3(target_range() * 2.0 + 1.4, 0.1, 0.1), Color(0.3, 0.3, 0.32))
 	rail.position = Vector3(0, ty + 0.5, rz - 0.15)
 	add_child(rail)
+	# The sweet spot: the stretch of rail right behind the tank, painted yellow.
+	var sweet = Build.box(Vector3(SF.DUNK["sweet_spot"] * 2.0, 0.13, 0.13), Color(1.0, 0.85, 0.2), 0.8)
+	sweet.position = rail.position
+	add_child(sweet)
 	target = Node3D.new()
 	add_child(target)
 	target.position = Vector3(0, ty, rz)
@@ -660,6 +699,8 @@ func add_dunk_tank() -> void:
 	var hanger = Build.box(Vector3(0.06, 0.5, 0.06), Color(0.3, 0.3, 0.32))
 	hanger.position.y = 0.5
 	target.add_child(hanger)
+	var k = hit_radius() / SF.DUNK["hit_radius"]
+	target.scale = Vector3(k, k, 1.0)
 	seat = Node3D.new()
 	add_child(seat)
 	seat.position = Vector3(0, _seat_y(), -size.z * 0.5 + 0.05)
@@ -686,6 +727,21 @@ func seat_point() -> Vector3:
 func target_point() -> Vector3:
 	return target.global_position
 
+func target_range() -> float:
+	return SF.DUNK["range"] + SF.DUNK["range_per_area"] * area
+
+func hit_radius() -> float:
+	var d: Dictionary = SF.DUNK
+	return maxf(d["min_hit_radius"], d["hit_radius"] - d["hit_radius_per_area"] * area)
+
+## Sweep rate: it slides through the middle at the same speed in every area, so the
+## wider the poles, the longer you wait for it to come round again.
+func target_speed() -> float:
+	return SF.DUNK["slide_speed"] / target_range()
+
+func in_sweet_spot() -> bool:
+	return absf(target_x) <= SF.DUNK["sweet_spot"]
+
 ## Host: a freshly shaped blade arcs from the anvil onto the seat.
 func catch_flying(blade: RigidBody3D, from: Vector3) -> void:
 	_seat(blade)
@@ -697,15 +753,14 @@ func _dunk_tick(delta: float) -> void:
 		label.text = "Dunk tank"
 		return
 	var d: Dictionary = SF.DUNK
-	var spd = d["speed"] * (1.0 + d["speed_per_area"] * main.door_index)
-	target_x = sin(beat_t * spd) * d["range"]
+	target_x = sin(beat_t * target_speed()) * target_range()
 	target.position.x = target_x
 	if slot == null:
 		label.text = "Dunk tank"
 	elif dunk_t >= 0.0:
 		label.text = "SPLASH!"
 	else:
-		label.text = slot.display_name() + "\nthrow ore at the target!"
+		label.text = slot.display_name() + "\nhit the target behind the tank!"
 	if main.is_client():
 		return
 	if slot and is_instance_valid(slot):
@@ -731,7 +786,7 @@ func _dunk_tick(delta: float) -> void:
 			continue
 		if it.linear_velocity.length() < d["min_speed"]:
 			continue
-		if it.global_position.distance_to(target_point()) > d["hit_radius"]:
+		if it.global_position.distance_to(target_point()) > hit_radius():
 			continue
 		var now = Time.get_ticks_msec() / 1000.0
 		if now - float(it.get_meta("dunk_hit", -10.0)) < 1.0:
@@ -742,30 +797,38 @@ func _dunk_tick(delta: float) -> void:
 		_target_hit()
 
 func _target_hit() -> void:
-	var dunk = slot != null and is_instance_valid(slot) and dunk_t < 0.0 and fly_t < 0.0
+	var ready = slot != null and is_instance_valid(slot) and dunk_t < 0.0 and fly_t < 0.0
+	var dunk = ready and in_sweet_spot()
 	ding_fx(dunk)
 	main.net_event("dunk", dunk)
 	if dunk:
 		dunk_t = 0.0
-		main.toast("DING! Down it goes!")
+		main.toast("WHAP! It spun over and slapped the sword in!")
+	elif ready:
+		main.toast("Ding! Hit it when it's right behind the tank.")
 	else:
 		main.toast("Ding! Nobody's on the seat.")
 
 ## Host: the sword drops off the seat into the water, then rides the slide out the front.
+const SLAP_DELAY := 0.25   # the target takes this long to spin round and slap the seat
+
 func _dunk_ride(delta: float) -> void:
 	dunk_t += delta
+	if dunk_t < SLAP_DELAY:
+		return
+	var t = dunk_t - SLAP_DELAY
 	var gy = -size.y * 0.5
 	var water = to_global(Vector3(0, size.y * 0.5 - 0.25, 0))
 	var top = to_global(Vector3(0, size.y * 0.5 - 0.05, size.z * 0.5))
 	var bottom = to_global(Vector3(0, gy + 0.15, size.z * 0.5 + 1.6))
 	var at: Vector3
-	if dunk_t < 0.35:
-		var k = dunk_t / 0.35
+	if t < 0.35:
+		var k = t / 0.35
 		at = seat_point().lerp(water, k * k)
-	elif dunk_t < 1.0:
-		at = water + Vector3(sin(dunk_t * 20.0) * 0.05, 0, 0)
-	elif dunk_t < 1.7:
-		var k = (dunk_t - 1.0) / 0.7
+	elif t < 1.0:
+		at = water + Vector3(sin(t * 20.0) * 0.05, 0, 0)
+	elif t < 1.7:
+		var k = (t - 1.0) / 0.7
 		at = water.lerp(top, minf(k * 3.0, 1.0)) if k < 0.33 else top.lerp(bottom, (k - 0.33) / 0.67)
 	else:
 		_finish_dunk(bottom)
@@ -790,17 +853,24 @@ func ding_fx(dunk: bool) -> void:
 		return
 	Fx.burst(main, target_point(), Color(1.0, 0.95, 0.5), 12, 0.8, 4.0, 0.0, 0.35, Vector3(0, 0, 1), 80.0)
 	var tw = create_tween()
-	tw.tween_property(target, "rotation:x", -1.2, 0.08)
-	tw.tween_property(target, "rotation:x", 0.0, 0.6).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	if not dunk:
+		tw.tween_property(target, "rotation:x", -1.2, 0.08)
+		tw.tween_property(target, "rotation:x", 0.0, 0.6).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 		return
+	# The whole target spins over on its rail and slaps down onto the seat.
+	target.rotation.x = 0.0
+	tw.tween_property(target, "rotation:x", TAU + 1.3, 0.28).set_ease(Tween.EASE_IN)
+	tw.tween_interval(0.25)
+	tw.tween_property(target, "rotation:x", TAU, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func(): target.rotation.x = 0.0)
 	var tw2 = create_tween()
+	tw2.tween_interval(SLAP_DELAY)
 	tw2.tween_property(seat, "rotation:x", deg_to_rad(70.0), 0.12)
 	tw2.tween_interval(0.8)
 	tw2.tween_property(seat, "rotation:x", 0.0, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var surface = global_position + Vector3(0, size.y * 0.5 + 0.1, 0)
 	var tw3 = create_tween()
-	tw3.tween_interval(0.3)
+	tw3.tween_interval(SLAP_DELAY + 0.3)
 	tw3.tween_callback(func():
 		Fx.burst(main, surface, Color(0.45, 0.7, 1.0, 0.9), 40, 1.6, 6.0, -10.0, 0.8, Vector3.UP, 55.0)
 		Fx.burst(main, surface + Vector3(0, 0.3, 0), Color(0.92, 0.92, 0.95, 0.7), 18, 2.2, 1.6, 1.5, 1.2, Vector3.UP, 30.0)

@@ -44,6 +44,23 @@ func _run() -> void:
 				n += 1
 			quit(0)
 			return
+		"deep":
+			# Area 4's taller hammer frame with a Steel ingot (red flag = drop it needs).
+			main.door_index = 3
+			main.build_area(main.make_layout(3))
+			await create_timer(0.3).timeout
+			var anv = main.anvil
+			var ingot = main.spawn_item("ingot", anv.global_position, {"tier": 3})
+			anv.accept(ingot)
+			var focus = anv.global_position + Vector3(0.4, 1.6, 0)
+			cam.global_position = focus + Vector3(1.5, 2.0, 7.5)
+			cam.look_at(focus)
+			for i in 20:
+				await physics_frame
+			await RenderingServer.frame_post_draw
+			root.get_viewport().get_texture().get_image().save_png(out.path_join("f_000.png"))
+			quit(0)
+			return
 		"hammer":
 			var anv = main.anvil
 			var ingot = main.spawn_item("ingot", anv.global_position, {"tier": 0})
@@ -90,7 +107,7 @@ func _run() -> void:
 			cam.look_at(focus)
 			for i in 10:
 				await physics_frame
-			var spd = SF.DUNK["speed"] * (1.0 + SF.DUNK["speed_per_area"] * main.door_index)
+			var spd = tank.target_speed()
 			for t in 220:
 				if t == 30:
 					# Time the throw so the target slides into the lane as the chunk arrives.
