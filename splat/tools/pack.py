@@ -60,9 +60,11 @@ for n, (img, ox, oy) in items:
 im = Image.fromarray(atlas, 'RGBA')
 # palette PNG: the art uses only a few dozen colours
 q = im.quantize(colors=255, method=Image.FASTOCTREE)
-q.save(os.path.join(OUT, NAME + '.png'), optimize=True)
 back = np.asarray(q.convert('RGBA'))
-assert (back[..., 3] == atlas[..., 3]).all()
+if (back[..., 3] == atlas[..., 3]).all():
+    q.save(os.path.join(OUT, NAME + '.png'), optimize=True)
+else:  # too many colours for a clean palette: keep full RGBA
+    im.save(os.path.join(OUT, NAME + '.png'), optimize=True)
 
 def box_of(a, b):
     m = (load(a) != load(b)).any(2)
