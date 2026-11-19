@@ -1,0 +1,1 @@
+{ "assets": [ { "id": "forge", "scene": "art/forge-live.js", "out": "splats/forge.bytes", "fps": 24, "secs": 1 } ] }
