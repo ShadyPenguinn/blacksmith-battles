@@ -1169,9 +1169,11 @@ function autoRow(){if(U('prospector')<10)return '';const c=autoCost(),l=S.autopi
 function mastRows(){return UNITS.filter(u=>mastOpen(u.k)||(S.mast||{})[u.k]).map(u=>{const n=(S.mast||{})[u.k]||0,open=mastOpen(u.k),c=mastCost(u.k);
   return `<div class="order"><div><b>${u.n} mastery</b> · level ${n}<div class="note">${u.n}s dig +${n*10}% ore now. Every 100 ${u.n}s (and 10 more Researchers) opens another +10%.</div></div>${open?`<button class="b sm" data-mast="${u.k}" ${S.ore<c?'disabled':''}>${fmtN(c)} ore</button>`:`<span class="note">Next at ${100*(n+1)} ${u.n}s, ${10*(n+1)} Researchers</span>`}</div>`}).join('')}
 function dig(btn,e){
-  const n=orePerTap();S.ore+=n;tally().taps=(tally().taps||0)+1;chips();if(SPLAT.mine)SPLAT.mine.swing();
-  const r=btn.getBoundingClientRect(),p=document.createElement('span');p.className='pop';p.textContent=`+${n} ore`;
-  p.style.left=((e.clientX||r.left+r.width/2)-r.left)+'px';p.style.top=((e.clientY||r.top+r.height/2)-r.top)+'px';btn.appendChild(p);setTimeout(()=>p.remove(),700);
+  const n=orePerTap();S.ore+=n;tally().taps=(tally().taps||0)+1;chips();
+  // with the splat mine showing, the miner strikes and the +ore pops up over the boulder in the art (Jonathan, 2026-11-18); otherwise it pops on the button
+  if(SPLAT.mine&&SPLAT.mine.meta)SPLAT.mine.swing(`+${fmtN(n)} ore`);
+  else{const r=btn.getBoundingClientRect(),p=document.createElement('span');p.className='pop';p.textContent=`+${n} ore`;
+  p.style.left=((e.clientX||r.left+r.width/2)-r.left)+'px';p.style.top=((e.clientY||r.top+r.height/2)-r.top)+'px';btn.appendChild(p);setTimeout(()=>p.remove(),700)}
   btn.classList.remove('bump');void btn.offsetWidth;btn.classList.add('bump');
 }
 function showModal(html){$('#modal').innerHTML=`<div class="modal"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`}

@@ -4,7 +4,7 @@
 // so it runs on any tablet; it only draws while its spot in the strip is on screen.
 //
 //   const s = SplatScenes.mount(el, 'forge');  s.start('Axe'); s.hit('P'); s.finish();
-//   const m = SplatScenes.mount(el, 'mine');   m.swing();
+//   const m = SplatScenes.mount(el, 'mine');   m.swing('+55 ore');
 (function () {
   const BASE = (document.currentScript && document.currentScript.src.replace(/[^/]*$/, '')) || 'splat/';
   const cache = {};
@@ -27,9 +27,10 @@
       embersFrom: [240, 60]
     },
     mine: {
-      dur: { idle: 1, swing: 0.6 },
+      dur: { idle: 1, strike: 0.12, recover: 0.38 },
       loops: {},
       hit: [266, 124],
+      popArea: [236, 300, 96, 112], // x0, x1, y0, y1: where the ore popups appear, above the boulder
       glows: [{ x: 97, y: 48, r: 26, c: '255,190,90', a: 0.16 }, { x: 193, y: 50, r: 22, c: '255,190,90', a: 0.14 },
         { x: 309, y: 46, r: 26, c: '255,190,90', a: 0.16 }, { x: 357, y: 62, r: 28, c: '255,190,90', a: 0.18 }]
     }
@@ -87,7 +88,6 @@
           if (ended === 'idle' || ended === 'ready') this.segT %= d;
           else { this.after(ended); if (this.onEnd) this.onEnd(ended); }
         }
-        if (this.seg === 'swing' && !this.chipped && this.segT >= 0.27) { this.chipped = true; this.burst(this.cfg.hit, 8, ['#d88038', '#f0b070', '#9a4a22', '#584738'], 0.9); }
         this.step(dt);
         this.draw();
         this.tick();
@@ -163,8 +163,29 @@
     lowerNow() { this.finishing = false; this.variant = ''; this.play('lower', ['idle']); }
   }
   class Mine extends Scene {
-    constructor(el) { super(el, 'mine'); }
-    swing() { this.chipped = false; this.play('swing', ['idle']); }
+    constructor(el) { super(el, 'mine'); this.onEnd = seg => { if (seg === 'strike') this.landed(); }; }
+    // he waits with the pick up; a tap is an instant strike, chips fly and the ore count pops up over the boulder
+    swing(label) {
+      if (this.seg === 'strike') this.landed(); // tapping faster than the swing: count the blow that was under way
+      this.label = label; this.play('strike', ['recover', 'idle']);
+    }
+    landed() {
+      this.burst(this.cfg.hit, 8, ['#d88038', '#f0b070', '#9a4a22', '#584738'], 0.9);
+      if (this.label) this.pop(this.label);
+      this.label = null;
+    }
+    pop(text) {
+      if (!this.meta || !this.cv.width) return;
+      const [x0, x1, y0, y1] = this.cfg.popArea, x = x0 + Math.random() * (x1 - x0), y = y0 + Math.random() * (y1 - y0);
+      const e = document.createElement('span');
+      e.textContent = text;
+      e.style.cssText = `position:absolute;left:${(((x - this.ox) / this.cv.width) * 100).toFixed(1)}%;top:${(((y - this.oy) / this.cv.height) * 100).toFixed(1)}%;` +
+        'transform:translate(-50%,-50%);z-index:3;pointer-events:none;white-space:nowrap;font-weight:800;font-size:15px;color:#f3cf6a;' +
+        'text-shadow:0 1px 0 #2a1608,0 0 6px rgba(0,0,0,.8)';
+      this.el.appendChild(e);
+      if (e.animate) e.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%,-50%) translateY(-6px)', opacity: 1, offset: 0.35 }, { transform: 'translate(-50%,-50%) translateY(-26px)', opacity: 0 }], { duration: 850, easing: "ease-out" });
+      setTimeout(() => e.remove(), 860);
+    }
   }
 
   window.SplatScenes = {
