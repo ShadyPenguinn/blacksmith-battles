@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()))}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length))}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -1237,7 +1237,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.mast){const k=d.mast,c=mastCost(k);if(mastOpen(k)&&S.ore>=c){S.ore-=c;S.mast=S.mast||{};S.mast[k]=mastNext(k);save();render()}}
   else if(d.up){const k=d.up,c=cost[k](S[k]);if(S.gold>=c&&S[k]<resCap(k)&&!(k==='night'&&S[k]>=NIGHT_MAX)){S.gold-=c;S[k]++;save();render()}}
   else if(t.id==='oil'){if(S.dust>=3){S.dust-=3;S.oil++;save();render()}}
-  else if(t.id==='exp')startBattle('exp');
+  else if(t.id==='exp'){if(SPLAT.fight&&SPLAT.fight.act)SPLAT.fight.act('To battle!');startBattle('exp')}
   else if(t.id==='eqbest')equipBest();
   else if(t.id==='armyL')armyStep(-1);
   else if(t.id==='armyR')armyStep(1);
