@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length));if(SPLAT.library&&SPLAT.library.count)SPLAT.library.count(Math.min(12,Object.keys(S.scrolls).length));if(SPLAT.sanctum&&SPLAT.sanctum.count)SPLAT.sanctum.count(Math.min(8,S.weapons.filter(w=>isMagic(w.arch)).length));if(SPLAT.upg&&SPLAT.upg.count)SPLAT.upg.count(Math.min(8,U('researcher')))}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.army)SPLAT.fight.army(S.squad.slice(0,squadSlots()).map(byId).filter(w=>w&&w.state!==1).map(w=>w.arch));if(SPLAT.library&&SPLAT.library.count)SPLAT.library.count(Math.min(12,Object.keys(S.scrolls).length));if(SPLAT.sanctum&&SPLAT.sanctum.count)SPLAT.sanctum.count(Math.min(8,S.weapons.filter(w=>isMagic(w.arch)).length));if(SPLAT.upg&&SPLAT.upg.count)SPLAT.upg.count(Math.min(8,U('researcher')))}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -1070,9 +1070,11 @@ function startBattle(kind){
   const clone=a=>a.map(u=>({...u,traits:[...u.traits]}));
   const res=sim(clone(mine),clone(foes),seed,true);
   battle={kind,title:kind==='exp'?expLabel():kind==='rep'?`Replay, stage ${S.stage-1}`:`Ghost of Smith ${String(seed%9000+1000)}`,A:clone(mine),B:clone(foes),res,i:0,tick:0,spd:battle?.spd||2,live:true,code:`${kind==='exp'?'E':kind==='rep'?'R':'G'}${kind==='rep'?S.stage-1:S.stage}-${seed.toString(36).toUpperCase()}`,log:[]};
-  render();step();
+  // on the battlefield scene the army marches out first; the fight starts when they meet
+  const F=SPLAT.fight;let wait=0;if(F&&F.begin){F.spd=()=>battle?battle.spd:2;wait=battle.spd?F.begin(battle.A,battle.B,battle.spd):0}
+  render();setTimeout(step,wait);
 }
-function drawMeters(){const b=battle;if(!b||!b.res.meters)return;const m=b.res.meters[b.tick];if(!m)return;b.res.mids.forEach((id,i)=>{const el=unitEl(id),bar=el&&el.querySelector('.atk i');if(bar){bar.style.width=Math.round(m[i])+'%';el.querySelector('.atk').classList.toggle('full',m[i]>=100)}})}
+function drawMeters(){const b=battle;if(!b||!b.res.meters)return;const m=b.res.meters[b.tick];if(!m)return;if(SPLAT.fight&&SPLAT.fight.meters)SPLAT.fight.meters(b.res.mids,m);b.res.mids.forEach((id,i)=>{const el=unitEl(id),bar=el&&el.querySelector('.atk i');if(bar){bar.style.width=Math.round(m[i])+'%';el.querySelector('.atk').classList.toggle('full',m[i]>=100)}})}
 function unitEl(id){return document.querySelector(`[data-u="${id}"]`)}
 function lineCards(arr){
   const alive=arr.filter(u=>u.hp>0),dead=arr.filter(u=>u.hp<=0);
@@ -1081,12 +1083,13 @@ function lineCards(arr){
 }
 function drawArena(){
   const b=battle,el=$('#arena');if(!el)return;
-  el.innerHTML=`<div class="lines"><h3>Enemy line · front on the left</h3><div class="line foe">${lineCards(b.B)}</div><h3>Your line · front on the left</h3><div class="line">${lineCards(b.A)}</div></div>
-  <div class="log" id="log" style="margin-top:10px">${b.log.slice(-40).map(l=>`<div class="${l.c||''}">${esc(l.t)}</div>`).reverse().join('')}</div>`;
+  const onField=!!(SPLAT.fight&&SPLAT.fight.meta); // the battlefield scene shows the fighters, their bars and blows
+  el.innerHTML=`${onField?'':`<div class="lines"><h3>Enemy line · front on the left</h3><div class="line foe">${lineCards(b.B)}</div><h3>Your line · front on the left</h3><div class="line">${lineCards(b.A)}</div></div>`}
+  <div class="log" id="log" style="margin-top:${onField?0:10}px">${b.log.slice(-40).map(l=>`<div class="${l.c||''}">${esc(l.t)}</div>`).reverse().join('')}</div>`;
 }
 function step(){
   const b=battle;if(!b||!b.live)return;
-  if(b.spd===0){while(b.i<b.res.ev.length)applyEv(b.res.ev[b.i++],true);return endBattle()}
+  if(b.spd===0){while(b.i<b.res.ev.length)applyEv(b.res.ev[b.i++],true);if(SPLAT.fight&&SPLAT.fight.skip)SPLAT.fight.skip(b.A,b.B);return endBattle()}
   b.tick++;
   while(b.i<b.res.ev.length&&b.res.ev[b.i].tick<=b.tick)applyEv(b.res.ev[b.i++],false);
   drawMeters();
@@ -1102,6 +1105,7 @@ function applyEv(e,quiet){
   else txt=`${d.name} ${e.txt}`;
   b.log.push({t:txt});
   if(quiet)return;
+  if(SPLAT.fight&&SPLAT.fight.ev)SPLAT.fight.ev(e);
   if(e.k==='down'){drawArena();return}
   const el=unitEl(e.d);
   if(el){
@@ -1114,6 +1118,7 @@ function applyEv(e,quiet){
 }
 function endBattle(){
   const b=battle;if(!b||!b.live)return;b.live=false;
+  if(SPLAT.fight&&SPLAT.fight.end)SPLAT.fight.end(b.res.win);
   let msg;
   if(b.kind==='rep'){
     if(b.res.win){
@@ -1237,7 +1242,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.mast){const k=d.mast,c=mastCost(k);if(mastOpen(k)&&S.ore>=c){S.ore-=c;S.mast=S.mast||{};S.mast[k]=mastNext(k);if(SPLAT.upg&&SPLAT.upg.act)SPLAT.upg.act('Upgraded');save();render()}}
   else if(d.up){const k=d.up,c=cost[k](S[k]);if(S.gold>=c&&S[k]<resCap(k)&&!(k==='night'&&S[k]>=NIGHT_MAX)){if(SPLAT.upg&&SPLAT.upg.act)SPLAT.upg.act('Upgraded');S.gold-=c;S[k]++;save();render()}}
   else if(t.id==='oil'){if(S.dust>=3){S.dust-=3;S.oil++;save();render()}}
-  else if(t.id==='exp'){if(SPLAT.fight&&SPLAT.fight.act)SPLAT.fight.act('To battle!');startBattle('exp')}
+  else if(t.id==='exp')startBattle('exp')
   else if(t.id==='eqbest')equipBest();
   else if(t.id==='armyL')armyStep(-1);
   else if(t.id==='armyR')armyStep(1);

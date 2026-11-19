@@ -84,6 +84,13 @@ func setup(p_main: Node, p_kind: String, p_size: Vector3, color: Color, opts: Di
 		weak.position = Vector3(0, -size.y * 0.5 + 1.2, size.z * 0.5 + 0.06)
 		add_child(weak)
 
+## Door: the storm gate from the kit, with its stone lintel on top.
+func dress_gate() -> void:
+	if SF.skin(get_node("Visual"), "gate", "Gate"):
+		var lintel = SF.kit_part("gate", "Lintel")
+		lintel.position.y = size.y * 0.5
+		add_child(lintel)
+
 func set_ore(o: String) -> void:
 	ore = o
 	var v = get_node_or_null("Visual")
@@ -604,6 +611,43 @@ func add_trip_hammer() -> void:
 	handle = Build.box(Vector3(0.45, 0.12, 0.12), Color(0.85, 0.2, 0.15))
 	add_child(handle)
 	_trip_visuals()
+	_dress_trip_hammer()
+
+## Swap the rig's placeholder boxes for the KayKit-style kit (if it's there). Same nodes,
+## same anchor points: the rope pieces only change mesh, so stretching them still works.
+func _dress_trip_hammer() -> void:
+	if SF.kit_mesh("trip", "PostShaft") == null:
+		return
+	var keep = [need_flag, rope_up, handle, head] + ropes
+	for c in get_children():
+		if not c is MeshInstance3D or c in keep or c.name == "Visual":
+			continue
+		var bm = c.mesh as BoxMesh
+		if bm and bm.size.y < 0.05:
+			continue   # height marks stay
+		c.visible = false
+	var gy = -size.y * 0.5
+	var top = _top_y()
+	var parts = []
+	for x in [-POST_X, POST_X]:
+		parts.append(["PostFoot", Vector3(x, gy, POST_Z), Vector3.ONE])
+		parts.append(["PostShaft", Vector3(x, gy, POST_Z), Vector3(1, top - gy, 1)])
+	parts.append(["Beam", Vector3((PULLEY_X - POST_X) * 0.5, top, POST_Z), Vector3.ONE])
+	parts.append(["Arm", Vector3(0, top, POST_Z * 0.5), Vector3.ONE])
+	parts.append(["Bracket", Vector3(PULLEY_X, top, POST_Z), Vector3.ONE])
+	parts.append(["Pulley", Vector3(PULLEY_X, top, POST_Z), Vector3.ONE])
+	for p in parts:
+		var mi = SF.kit_part("trip", p[0])
+		mi.position = p[1]
+		mi.scale = p[2]
+		add_child(mi)
+	for c in head.get_children():
+		c.visible = false
+	head.add_child(SF.kit_part("trip", "Head"))
+	SF.skin(rope_up, "trip", "RopeY")
+	for r in ropes:
+		SF.skin(r, "trip", "RopeZ")
+	SF.skin(handle, "trip", "Handle")
 
 ## Where the rope comes down from the pulley, at ground level: pull away from here.
 func rope_anchor() -> Vector3:
@@ -796,51 +840,85 @@ func _seat_y() -> float:
 func add_dunk_tank() -> void:
 	var gy = -size.y * 0.5
 	var wood = Color(0.5, 0.34, 0.2)
+	var kit = SF.kit_mesh("dunk", "Tank") != null
+	if kit:
+		SF.skin(get_node("Visual"), "dunk", "Tank")
 	var water = Build.box(Vector3(size.x * 0.92, 0.08, size.z * 0.92), Color(0.35, 0.65, 1.0), 0.6)
 	water.position.y = size.y * 0.5 + 0.01
+	if SF.skin(water, "dunk", "Water"):
+		water.position.y = size.y * 0.5 - 0.08
 	add_child(water)
 	var ty = gy + SF.DUNK["target_height"]
 	var rz = -size.z * 0.5 - 0.15
 	for x in [-target_range() - 0.6, target_range() + 0.6]:
+		if kit:
+			var top = ty + 0.5
+			for part in [["PoleFoot", 1.0], ["Pole", top - 0.36 - gy], ["PoleCap", 0.0]]:
+				var mi = SF.kit_part("dunk", part[0])
+				mi.position = Vector3(x, top if part[0] == "PoleCap" else gy, rz - 0.15)
+				if part[0] == "Pole":
+					mi.scale.y = part[1]
+				add_child(mi)
+			continue
 		var post = Build.box(Vector3(0.18, ty - gy + 0.3, 0.18), wood)
 		post.position = Vector3(x, (gy + ty + 0.3) * 0.5, rz - 0.15)
 		add_child(post)
 	var rail = Build.box(Vector3(target_range() * 2.0 + 1.4, 0.1, 0.1), Color(0.3, 0.3, 0.32))
 	rail.position = Vector3(0, ty + 0.5, rz - 0.15)
+	if SF.skin(rail, "dunk", "Rail"):
+		rail.scale.x = target_range() * 2.0 + 1.2
 	add_child(rail)
 	# The sweet spot: the stretch of rail right behind the tank, painted yellow.
 	var sweet = Build.box(Vector3(SF.DUNK["sweet_spot"] * 2.0, 0.13, 0.13), Color(1.0, 0.85, 0.2), 0.8)
 	sweet.position = rail.position
+	if SF.skin(sweet, "dunk", "Sweet"):
+		sweet.scale.x = SF.DUNK["sweet_spot"] / 0.4
 	add_child(sweet)
 	target = Node3D.new()
 	add_child(target)
 	target.position = Vector3(0, ty, rz)
-	var rings = [[0.5, Color(0.9, 0.15, 0.12)], [0.36, Color(0.95, 0.95, 0.9)], [0.2, Color(0.9, 0.15, 0.12)]]
-	for i in rings.size():
-		var disc = Build.cyl(rings[i][0], 0.06, rings[i][1])
-		disc.rotation_degrees = Vector3(90, 0, 0)
-		disc.position.z = 0.03 * i
-		target.add_child(disc)
-	var hanger = Build.box(Vector3(0.06, 0.5, 0.06), Color(0.3, 0.3, 0.32))
-	hanger.position.y = 0.5
-	target.add_child(hanger)
+	if kit:
+		target.add_child(SF.kit_part("dunk", "Target"))
+	else:
+		var rings = [[0.5, Color(0.9, 0.15, 0.12)], [0.36, Color(0.95, 0.95, 0.9)], [0.2, Color(0.9, 0.15, 0.12)]]
+		for i in rings.size():
+			var disc = Build.cyl(rings[i][0], 0.06, rings[i][1])
+			disc.rotation_degrees = Vector3(90, 0, 0)
+			disc.position.z = 0.03 * i
+			target.add_child(disc)
+		var hanger = Build.box(Vector3(0.06, 0.5, 0.06), Color(0.3, 0.3, 0.32))
+		hanger.position.y = 0.5
+		target.add_child(hanger)
 	var k = hit_radius() / SF.DUNK["hit_radius"]
 	target.scale = Vector3(k, k, 1.0)
 	seat = Node3D.new()
 	add_child(seat)
 	seat.position = Vector3(0, _seat_y(), -size.z * 0.5 + 0.05)
-	var plank = Build.box(Vector3(1.0, 0.08, 0.75), wood.lightened(0.15))
-	plank.position.z = 0.37
-	seat.add_child(plank)
-	var back = Build.box(Vector3(0.12, _seat_y() - gy, 0.12), wood)
-	back.position = Vector3(0, gy + (_seat_y() - gy) * 0.5, -size.z * 0.5 + 0.05)
-	add_child(back)
+	if kit:
+		seat.add_child(SF.kit_part("dunk", "Seat"))
+		var bz = -size.z * 0.5 - 0.18
+		var foot = SF.kit_part("dunk", "PoleFoot")
+		foot.position = Vector3(0, gy, bz)
+		add_child(foot)
+		var pole = SF.kit_part("dunk", "Pole")
+		pole.position = Vector3(0, gy, bz)
+		pole.scale.y = _seat_y() - gy - 0.05
+		add_child(pole)
+	else:
+		var plank = Build.box(Vector3(1.0, 0.08, 0.75), wood.lightened(0.15))
+		plank.position.z = 0.37
+		seat.add_child(plank)
+		var back = Build.box(Vector3(0.12, _seat_y() - gy, 0.12), wood)
+		back.position = Vector3(0, gy + (_seat_y() - gy) * 0.5, -size.z * 0.5 + 0.05)
+		add_child(back)
 	# Water slide: a blue chute from the front of the tank down to the ground.
 	var a = Vector3(0, size.y * 0.5 - 0.1, size.z * 0.5)
 	var b = Vector3(0, gy + 0.08, size.z * 0.5 + 1.6)
 	var chute = Build.box(Vector3(0.6, 0.06, 1.0), Color(0.3, 0.55, 0.95))
 	add_child(chute)
 	_stretch(chute, to_global(a), to_global(b))
+	if SF.skin(chute, "dunk", "Chute"):
+		return   # the kit's chute has its own rails
 	for side in [-0.32, 0.32]:
 		var lip = Build.box(Vector3(0.06, 0.16, 1.0), Color(0.95, 0.85, 0.3))
 		add_child(lip)
