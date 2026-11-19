@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length));if(SPLAT.library&&SPLAT.library.count)SPLAT.library.count(Math.min(12,Object.keys(S.scrolls).length))}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length);if(SPLAT.armory&&SPLAT.armory.count)SPLAT.armory.count(Math.min(12,S.weapons.length));if(SPLAT.barracks&&SPLAT.barracks.count)SPLAT.barracks.count(Math.min(12,armyCap()));if(SPLAT.fight&&SPLAT.fight.count)SPLAT.fight.count(Math.min(12,S.squad.filter(Boolean).length));if(SPLAT.library&&SPLAT.library.count)SPLAT.library.count(Math.min(12,Object.keys(S.scrolls).length));if(SPLAT.sanctum&&SPLAT.sanctum.count)SPLAT.sanctum.count(Math.min(8,S.weapons.filter(w=>isMagic(w.arch)).length))}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -868,7 +868,7 @@ function strike(force){
   else if(p>=F.zl+w*.3&&p<=F.zl+w*.7)r='P';
   else if(p>=F.zl&&p<=F.zl+w)r='G';
   else r='M';
-  F.last=now;F.res.push(r);if(SPLAT.forge&&!F.ring)SPLAT.forge.hit(r);
+  F.last=now;F.res.push(r);if(SPLAT.forge&&!F.ring)SPLAT.forge.hit(r);if(SPLAT.sanctum&&F.ring&&r!=='O')SPLAT.sanctum.act(r==='P'?'Perfect':r==='G'?'Bound':'Miss');
   let streak=0;for(let i=F.res.length-1;i>=0&&F.res[i]==='P';i--)streak++;
   const msg={P:streak>4?`Perfect x${streak}! +${perfectStars(streak)} stars`:'Perfect!',G:'Good',M:F.ring?'The binding slips':'Miss',O:'Overheated!'}[r];
   $('#callout').textContent=msg;$('#pips').innerHTML=pipsHtml();
