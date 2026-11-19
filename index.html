@@ -516,7 +516,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function chips(){
   $('#res').innerHTML=[
-    ['Ore',S.ore<1e6?Math.floor(S.ore):fmtN(S.ore)],['Gold',S.gold<1e6?Math.floor(S.gold):fmtN(S.gold)],['Renown',S.renown],['Rating',S.rating] // Ward Oil lives in the Library and Etch screens (Jonathan, 2026-11-17)
+    ['Ore',fmtN(Math.floor(S.ore))],['Gold',fmtN(Math.floor(S.gold))],['Renown',fmtN(S.renown)],['Rating',fmtN(S.rating)] // Ward Oil lives in the Library and Etch screens (Jonathan, 2026-11-17)
   
   ].map(([k,v])=>`<span class="chip"><small>${k}</small>${v}</span>`).join('');
 }
@@ -653,6 +653,14 @@ function shopView(){revealUnits();
 }
 let uOpen=null;
 const fmtR=n=>n<100?String(Math.round(n*10)/10):fmtN(n);
+// every number on screen reads short past 9,999 (12.3k, 4.5M, 6.7B...) the way fmtN writes it, wherever it was printed:
+// stats, power, costs, the battle log, damage pops (Jonathan, 2026-11-19). Text only; inputs and code are left alone.
+const BIGNUM=/(^|[^\w.])(\d{5,})(?![\w.])/g;
+function shortNums(root){const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>/^(SCRIPT|STYLE|TEXTAREA)$/.test(n.parentNode&&n.parentNode.nodeName)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+  const hits=[];while(w.nextNode()){const n=w.currentNode;if(/\d{5}/.test(n.data))hits.push(n)}
+  for(const n of hits){const v=n.data.replace(BIGNUM,(m,pre,d)=>pre+fmtN(+d));if(v!==n.data)n.data=v}}
+if(window.MutationObserver)new MutationObserver(ms=>{for(const m of ms){if(m.type==='characterData'){if(/\d{5}/.test(m.target.data))shortNums(m.target.parentNode||document.body)}else for(const a of m.addedNodes){if(a.nodeType===3?/\d{5}/.test(a.data):a.nodeType===1)shortNums(a.nodeType===3?a.parentNode:a)}}}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+document.addEventListener('DOMContentLoaded',()=>shortNums(document.body));
 function unitRow(u){const c=unitCost(u.k),got=u.ms.filter(([n])=>U(u.k)>=n),more=got.length<u.ms.length,open=uOpen===u.k,each=Math.round(unitOre(u.k)*100)/100,tot=Math.round(U(u.k)*unitOre(u.k)*10)/10;
   return `<div class="order"><div class="uhead" data-uinfo="${u.k}" role="button" aria-expanded="${open}"><div class="uline"><b>${u.n}</b> ×${U(u.k)} · <span style="color:var(--gold)">${fmtR(each)} ea · ${fmtR(tot)}/s</span> <span class="chev">${open?'▴':'▾'}</span></div>
     ${more&&!open?`<div class="note" style="color:var(--muted)">? More to discover</div>`:''}
