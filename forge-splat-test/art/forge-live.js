@@ -104,7 +104,7 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
 
     // ---- furnace: stone body, arched mouth, iron bands with rivets, copper hood and chimney ----
     const FX = -1.9, FZ = -1.2;
-    const STONE = { r: [40, 1, 2, 3, 37, 38] };
+    const STONE = { r: [40, 1, 2, 3, 4, 5] }; // cool grey: the furnace keeps its colour in the firelight
     S.box([FX, 0.75, FZ], [0.95, 0.68, 0.75], STONE, { res: 0.07, rd: 0.08 });
     S.box([FX, 0.5, FZ + 0.55], [0.42, 0.32, 0.5], STONE, { neg: true });
     S.ball([FX, 0.82, FZ + 0.55], [0.42, 0.34, 0.5], STONE, { neg: true });
@@ -122,15 +122,7 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
     // coals and fire in the mouth
     for (let i = 0; i < 9; i++)
       S.ball([FX - 0.32 + i * 0.08, 0.24 + 0.04 * (i % 2), FZ + 0.4 + 0.12 * ((i * 5) % 3)], 0.07, { r: [16, 17, 18], em: true }, { res: 0.03 });
-    // static flame tongues: orange outside, yellow inside, white-hot core
-    const tongue = (x, z, h, w) => {
-      S.lathe([x, 0.26, z], h, t => w * Math.pow(1 - t, 0.8) * (0.6 + 0.4 * Math.sin(Math.min(1, t * 3) * 1.57)), { r: [16, 17], em: true }, { res: 0.022 });
-      S.lathe([x, 0.27, z + 0.03], h * 0.72, t => w * 0.66 * Math.pow(1 - t, 0.8), { r: [18], em: true }, { res: 0.02 });
-      S.lathe([x, 0.27, z + 0.06], h * 0.38, t => w * 0.36 * (1 - t), { r: [19], em: true }, { res: 0.016 });
-    };
-    tongue(FX - 0.12, FZ + 0.5, 0.5, 0.15);
-    tongue(FX + 0.13, FZ + 0.55, 0.36, 0.12);
-    tongue(FX - 0.3, FZ + 0.58, 0.26, 0.09);
+    // the flames are their own looping clip (art/fire.js)
     // copper hood and chimney
     S.lathe([FX, 1.43, FZ], 0.42, t => 0.85 - 0.5 * t, COPPER, { res: 0.05 });
     S.lathe([FX, 1.85, FZ], 2.0, 0.26, COPPER, { res: 0.05 });
