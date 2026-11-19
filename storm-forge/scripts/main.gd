@@ -218,6 +218,12 @@ func area_origin(i: int) -> Vector3:
 func area_center() -> Vector3:
 	return area_origin(door_index) + Vector3(0, 0, -2)
 
+## The middle of whichever area this point is in (each area's floor runs from 12.5 m
+## past its origin to 14.5 m before it).
+func area_center_at(pos: Vector3) -> Vector3:
+	var i = clampi(int(floor((14.5 - pos.z) / SF.AREA_STEP)), 0, door_index)
+	return area_origin(i) + Vector3(0, 0, -2)
+
 const STATION_SIZES := {
 	"furnace": Vector3(2.2, 2.2, 2.2), "anvil": Vector3(1.3, 0.9, 0.7),
 	"trough": Vector3(1.6, 1.0, 1.2),
@@ -337,6 +343,8 @@ func build_area(lay: Dictionary) -> void:
 	furnace = made["furnace"]
 	anvil = made["anvil"]
 	trough = made["trough"]
+	anvil.area = i
+	trough.area = i
 	anvil.add_trip_hammer()
 	trough.add_dunk_tank()
 	var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
@@ -715,7 +723,9 @@ func _update_camera(delta: float) -> void:
 	if players.is_empty():
 		return
 	var p = players[controlled]
-	var focus: Vector3 = p.global_position.lerp(area_center(), 0.35)
+	# Lean toward the middle of the area you're standing in (not the newest one), so
+	# walking back through an open door keeps the camera on you.
+	var focus: Vector3 = p.global_position.lerp(area_center_at(p.global_position), 0.35)
 	var want = focus + SF.CAM_OFFSET
 	cam.global_position = cam.global_position.lerp(want, clampf(delta * 4.0, 0.0, 1.0)) if cam.global_position != Vector3.ZERO else want
 	shake = maxf(0.0, shake - delta)

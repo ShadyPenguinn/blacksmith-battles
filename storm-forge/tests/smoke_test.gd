@@ -35,6 +35,7 @@ func _run() -> void:
 	var smelter = main.players[1]
 	var smith = main.players[2]
 	var finisher = main.players[3]
+	main.lightning.next_in = 9999.0   # no random strikes: the lightning checks below call their own
 	check(main.players.size() == 4, "four smiths spawn")
 	check(miner.held.tool == "pickaxe" and smelter.held.tool == "tongs" and smith.held.tool == "hammer" and finisher.held.tool == "bucket", "each smith holds their tool")
 
@@ -141,6 +142,11 @@ func _run() -> void:
 
 	# Stomp bellows: jumping onto one heats the furnace; over-stomping burps.
 	main.lightning.next_in = 9999.0
+	main.lightning.warn_t = -1.0   # and call off a strike that was already on its way
+	# The ingot can pop out onto a bellows: set it down in front so it isn't in the way.
+	ingots[0].global_position = main.furnace.global_position + Vector3(0.8, -0.6, 2.0)
+	ingots[0].linear_velocity = Vector3.ZERO
+	main.furnace.last_stomp = -10.0   # the smelting loop's last stomp mustn't count as one-footed
 	var heat0 = main.furnace.heat
 	var bel = main.furnace.bellows[1]
 	put(smelter, bel.global_position + Vector3(0, 0, 0))
@@ -176,6 +182,7 @@ func _run() -> void:
 
 	# Rope hammer: grab the handle, walk back to haul the head up, let go to slam.
 	main.lightning.next_in = 9999.0
+	main.lightning.warn_t = -1.0   # and call off a strike that was already on its way
 	check(ingots[0].hot > 20.0, "ingots stay hot long enough to haul the hammer")
 	var anv = main.anvil
 	main.set_controlled(3)   # the keyboard drives the miner otherwise, and nobody's holding a key
@@ -264,7 +271,20 @@ func _run() -> void:
 	check(closest < 0.4, "an aimed throw reaches the target's height in your lane")
 	main.despawn(rock)
 
-	# Hit the target: the seat drops, the blade quenches and rides the slide out, finished.
+	# A hit off to the side only dings; the blade stays on the seat.
+	tank.beat_t = (PI * 0.5) / tank.target_speed()
+	await frames(1)
+	var side_shot = main.spawn_item("ore", tank.target_point() + Vector3(0, 0, 0.35), {"ore": "copper"})
+	side_shot.linear_velocity = Vector3(0, 0, -7)
+	await frames(3)
+	check(tank.dunk_t < 0.0 and tank.slot == blanks[0], "hitting the target off to the side doesn't dunk")
+	main.despawn(side_shot)
+	await create_timer(1.1).timeout
+
+	# Hit it in the middle, right behind the tank: it slaps the blade in, and the blade
+	# quenches and rides the slide out, finished.
+	tank.beat_t = 0.0
+	await frames(1)
 	var shot = main.spawn_item("ore", tank.target_point() + Vector3(0, 0, 0.35), {"ore": "copper"})
 	shot.linear_velocity = Vector3(0, 0, -7)
 	await frames(3)
@@ -273,6 +293,15 @@ func _run() -> void:
 	var weapons = items_of("weapon")
 	check(weapons.size() == 1 and weapons[0].tier == 0, "the dunk finishes a copper sword")
 	check(weapons.size() == 1 and weapons[0].global_position.z > tank.global_position.z + 1.0, "the sword comes out the bottom of the slide")
+
+	# Harder metals need a longer drop: a short one on Iron does nothing.
+	var iron = main.spawn_item("ingot", anv.global_position, {"tier": 2})
+	anv.accept(iron)
+	anv.slam(0.4)   # 0.8 m drop, Iron needs 1 m
+	check(anv.shape == 0.0, "a drop below the metal's minimum doesn't shape it")
+	anv.slam(0.8)   # 1.6 m: 0.6 m past the minimum
+	check(absf(anv.shape - 0.6 * SF.TRIP["shape_per_meter"]) < 0.01, "only the drop past the minimum counts")
+	main.despawn(iron)
 
 	# Swing at the door until it breaks (copper vs copper door).
 	put(smith, weapons[0].global_position)
@@ -307,6 +336,9 @@ func _run() -> void:
 	check(get_nodes_in_group("node").size() > 0, "new ore nodes spawned")
 	check(main.furnace.global_position.z < -14.0 and main.door.global_position.z < -35.0, "the next area has its own forge past the old door")
 	check(main.areas.size() == 2, "the area you came from stays, older ones are cleared")
+	check(main.anvil.lift() > SF.TRIP["lift"], "the hammer frame is taller in the next area")
+	check(main.area_center_at(Vector3(0, 0, 3)).z > -3.0 and main.area_center_at(Vector3(0, 0, -30)).z < -25.0, "the camera leans toward the area you're standing in, old or new")
+	check(main.trough.target_range() > SF.DUNK["range"] and main.trough.hit_radius() < SF.DUNK["hit_radius"], "the dunk target is smaller and slides further in the next area")
 
 	# Veins run dry, and lightning opens new ones.
 	main.lightning.next_in = 9999.0
