@@ -221,14 +221,58 @@ const MODELS := {
 	"ore_chunk": M + "resources/Copper_Nugget_Large.gltf",
 	"ore_node": M + "dungeon/rocks.gltf",
 	"furnace": "",
-	"bellows": M + "stations/bellows_giant.glb",
+	"bellows": M + "stations/bellows_giant.glb",  # nozzle +X, lid hinged at the nozzle, "Stomp" anim
 	# KayKit-style stone forge, used at real size (not fitted): "Glow" is the fire the heat
 	# colours, "Cap" pops open on "Pop", "Spout" is where finished ingots fly out.
-	"furnace_model": M + "stations/furnace_forge.glb",  # nozzle +X, lid hinged at the nozzle, "Stomp" anim
+	"furnace_model": M + "stations/furnace_forge.glb",
 	"anvil": M + "tools/anvil.gltf",
 	"trough": "",
 	"door": "",
 }
+## KayKit-style part kits: one .glb of separate meshes the game places and stretches itself
+## (station.gd _dress_trip_hammer / add_dunk_tank, main.gd walls and gate). Empty = boxes.
+const KITS := {
+	"trip": M + "stations/trip_hammer_parts.glb",
+	"dunk": M + "stations/dunk_tank_parts.glb",
+	"gate": M + "stations/gate_walls_parts.glb",
+}
+static var _kit_meshes := {}
+
+## One mesh out of a kit by its node name, or null if the kit isn't there.
+static func kit_mesh(kit: String, part: String) -> Mesh:
+	var key = kit + "/" + part
+	if _kit_meshes.has(key):
+		return _kit_meshes[key]
+	var path: String = KITS.get(kit, "")
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var res = load(path)
+	if not res is PackedScene:
+		return null
+	var inst: Node = res.instantiate()
+	for mi in inst.find_children("*", "MeshInstance3D", true, false):
+		_kit_meshes[kit + "/" + String(mi.name)] = mi.mesh
+	inst.free()
+	return _kit_meshes.get(key)
+
+## A new MeshInstance3D showing that kit part, or null.
+static func kit_part(kit: String, part: String) -> MeshInstance3D:
+	var m = kit_mesh(kit, part)
+	if m == null:
+		return null
+	var mi = MeshInstance3D.new()
+	mi.mesh = m
+	return mi
+
+## Show a kit part on an existing placeholder mesh (keeps its transform). False if missing.
+static func skin(mi: MeshInstance3D, kit: String, part: String) -> bool:
+	var m = kit_mesh(kit, part)
+	if m == null:
+		return false
+	mi.mesh = m
+	mi.material_override = null
+	return true
+
 const SMITH_ANIMS := [M + "anims/Rig_Medium_MovementBasic.glb", M + "anims/Rig_Medium_General.glb",
 	M + "anims/Rig_Medium_Tools.glb", M + "anims/Rig_Medium_MovementAdvanced.glb"]
 

@@ -193,10 +193,29 @@ func _wall(parent: Node3D, pos: Vector3, size: Vector3, visible_wall: bool) -> v
 	var w = StaticBody3D.new()
 	w.collision_layer = 1
 	w.add_child(Build.box_shape(size))
-	if visible_wall:
+	if visible_wall and not _dress_wall(w, size):
 		w.add_child(Build.box(size, Color(0.4, 0.38, 0.36)))
 	parent.add_child(w)
 	w.global_position = pos
+
+## Stone walls from the gate kit: the long side walls are 3 m tiles, the gate's flanks
+## are one battlement piece each. False (keep the box) if the kit or the size doesn't fit.
+func _dress_wall(w: Node3D, size: Vector3) -> bool:
+	if size.is_equal_approx(Vector3(7, 8, 2)):
+		var mi = SF.kit_part("gate", "GateWall")
+		if mi:
+			w.add_child(mi)
+		return mi != null
+	if size.x == 1.0 and size.y == 4.0 and fmod(size.z, 3.0) == 0.0:
+		var n = int(size.z / 3.0)
+		for k in n:
+			var mi = SF.kit_part("gate", "WallSeg")
+			if mi == null:
+				return false
+			mi.position.z = -size.z * 0.5 + 1.5 + 3.0 * k
+			w.add_child(mi)
+		return true
+	return false
 
 func _station(kind: String, pos: Vector3, size: Vector3, color: Color, opts: Dictionary = {}, parent: Node = null) -> StaticBody3D:
 	var s = StaticBody3D.new()
@@ -335,6 +354,7 @@ func build_area(lay: Dictionary) -> void:
 	_wall(root, o + Vector3(-9.5, 4, -12.5), Vector3(7, 8, 2), true)
 	_wall(root, o + Vector3(9.5, 4, -12.5), Vector3(7, 8, 2), true)
 	door = _station("door", o + Vector3(0, 3.5, -12.5), Vector3(12, 7, 1), Color(0.35, 0.22, 0.12), {}, root)
+	door.dress_gate()
 	var st: Dictionary = lay["stations"]
 	var made = {}
 	for k in ["furnace", "anvil", "trough"]:
