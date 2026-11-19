@@ -91,7 +91,12 @@ const FIRE := {
 ## Rope drop hammer at the anvil. Grab the rope (hold F or the mouse) and walk away
 ## from the anvil to haul the giant hammer up; let go and it drops. Anyone can pull.
 const TRIP := {
-	"lift": 2.0,              # meters the head rises at full pull
+	"lift": 2.0,              # meters the head rises at full pull, in the first area...
+	"lift_per_area": 0.45,    # ...and the frame is this much taller each area after
+	# Harder metals need a longer drop before a slam does anything (meters, by tier:
+	# Copper, Bronze, Iron, Steel, Moonsilver, Starmetal). Past that, each meter counts.
+	"min_drop": [0.0, 0.5, 1.0, 1.5, 2.0, 2.5],
+	"shape_per_meter": 0.5,   # shaping per meter of drop past the minimum
 	"solo": 0.65,             # one smith pulling all the way gets it this high (two get it to the top)
 	"slack": 1.0,             # meters you can stand from the rope before it starts lifting
 	"pull_len": 2.6,          # then this much further to pull it all the way
@@ -99,22 +104,27 @@ const TRIP := {
 	"rope_slow": 0.55,        # walking speed while hauling
 	"raise_speed": 2.2,       # meters per second the head can rise (it's heavy)
 	"gravity": 26.0,          # how fast it drops
-	"shape_needed": 3.0,      # slam power to finish a sword (a full-height slam is 1.0)
+	"shape_needed": 3.0,      # shaping to finish a sword (a 2 m drop on Copper is 1.0)
 	"min_power": 0.12,        # weaker than this is just a bump
-	"big_power": 0.85,        # a slam this strong shakes nearby smiths off their feet
+	"big_power": 0.85,        # a drop from this share of the full height shakes nearby smiths off their feet
 	"quake_radius": 2.4,
 	"quake_push": 4.5,
 	"quake_stun": 0.35,
 }
 ## Dunk tank. The finished sword flies off the anvil onto the seat. Hit the moving target
-## with a thrown ore chunk: the seat drops, the sword quenches in the tank and rides the
-## water slide out the front, done.
+## with a thrown ore chunk while it's in the middle, right behind the tank: it spins over
+## and slaps the sword into the water, and the sword rides the water slide out the front,
+## done. A hit anywhere else just dings. Each area the target is smaller and the poles
+## are further apart, so you wait longer for it to come round to the middle.
 const DUNK := {
 	"target_height": 2.2,     # meters above the ground
-	"range": 1.3,             # the target slides this far either side
-	"speed": 1.3,             # how fast it slides (radians/second of the sweep)
-	"speed_per_area": 0.08,   # a bit faster each area
-	"hit_radius": 0.6,
+	"range": 1.3,             # the target slides this far either side of the middle...
+	"range_per_area": 0.3,    # ...plus this much more each area
+	"slide_speed": 1.7,       # meters per second it slides through the middle
+	"sweet_spot": 0.4,        # a hit within this far of the middle slaps the sword down
+	"hit_radius": 0.6,        # how close a chunk has to pass to hit the target...
+	"hit_radius_per_area": 0.035,   # ...this much smaller each area...
+	"min_hit_radius": 0.35,   # ...but never smaller than this
 	"min_speed": 3.0,         # thrown, not dropped
 	"throw_speed": 9.0,       # horizontal speed of an aimed throw at the tank
 	"aim_range": 10.0,        # throws this close to the tank aim at the target's height
