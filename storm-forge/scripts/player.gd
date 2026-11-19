@@ -45,6 +45,7 @@ var in_sprint = false
 var in_dive = false                 # one-shot, cleared when used
 var in_hold = false                 # use button held down (hauling a rope)
 var rope: Node3D = null             # the anvil whose hammer rope you're hauling
+var rope_slot = 0                   # which of its two ropes
 var rope_grace = 0.0                # just grabbed: don't let go before the held button arrives
 var puppet = false                  # client side: follow snapshots
 var net_pos = Vector3.ZERO
@@ -158,7 +159,15 @@ func setup(p_main: Node, p_idx: int) -> void:
 		var nose = Build.box(Vector3(0.12, 0.12, 0.2), Color(0.9, 0.7, 0.55))
 		nose.position = Vector3(0, 0.75, -0.3)
 		visual.add_child(nose)
-	ring = Build.cyl(0.6, 0.04, Color(1, 1, 1), 1.0)
+	# Who you control: a thin ring outline at your feet.
+	ring = MeshInstance3D.new()
+	var tm = TorusMesh.new()
+	tm.inner_radius = 0.55
+	tm.outer_radius = 0.62
+	tm.rings = 48
+	ring.mesh = tm
+	ring.material_override = Build.mat(Color(1, 1, 1), 1.0)
+	ring.scale = Vector3(1, 0.25, 1)
 	ring.position.y = 0.03
 	add_child(ring)
 	name_tag = Build.label(role["name"], 36)
@@ -318,7 +327,7 @@ func _goof(delta: float, moved: float) -> void:
 	elif skidding:
 		pitch = deg_to_rad(g["skid_lean_deg"])     # lean back, heels dug in
 	if rope:
-		pitch = deg_to_rad(18.0 + 16.0 * rope_pull())   # hauling: lean way back
+		pitch = deg_to_rad(18.0 + 16.0 * rope_pull() / rope.lift())   # hauling: lean way back
 	visual.rotation.x = lerp_angle(visual.rotation.x, pitch, clampf(delta * 14.0, 0.0, 1.0))
 
 ## The bellows under your feet, if you're standing on one.
@@ -423,21 +432,21 @@ func state() -> String:
 	return "ground"
 
 ## Grab the anvil's hammer rope. Hold use to keep hauling; let go and the hammer drops.
-func grab_rope(anvil: Node3D) -> void:
+func grab_rope(anvil: Node3D, slot: int = 0) -> void:
 	rope = anvil
+	rope_slot = slot
 	rope_grace = 0.2
 	in_hold = true
 
 func let_go() -> void:
 	rope = null
 
-## How hard you're hauling: 0 standing by the rope, 1 at the end of it.
+## How much rope you've hauled in, in meters (= how high you've lifted the head).
 func rope_pull() -> float:
 	if rope == null:
 		return 0.0
-	var g: Dictionary = SF.TRIP
-	var off = global_position - rope.rope_anchor()
-	return clampf((Vector2(off.x, off.z).length() - g["slack"]) / g["pull_len"], 0.0, 1.0)
+	var off = global_position - rope.rope_anchor(rope_slot)
+	return clampf(Vector2(off.x, off.z).length() - SF.TRIP["slack"], 0.0, rope.lift())
 
 ## Can this smith do that right now? (move, dive, slot, interact, use, throw)
 func can(what: String) -> bool:
@@ -611,7 +620,7 @@ func _physics_process(delta: float) -> void:
 		var slow = SF.CARRY_SLOW - SF.CARRY_SLOW_EXTRA * (heavy - 1)
 		speed *= slow if main.mod("featherweight") == 0 else 0.9
 	if rope:
-		speed *= SF.TRIP["rope_slow"]
+		speed *= SF.TRIP["rope_slow"] + SF.TRIP["rope_help"] * (rope.pullers().size() - 1)
 	var flat = Vector3(velocity.x, 0, velocity.z)
 	if flop:
 		dive_t -= delta
@@ -648,7 +657,7 @@ func _physics_process(delta: float) -> void:
 		facing = dive_dir
 	if rope:
 		# Haul with your back to where you're going: face the rope, walk backwards.
-		var to_rope = rope.rope_anchor() - global_position
+		var to_rope = rope.rope_anchor(rope_slot) - global_position
 		to_rope.y = 0.0
 		if to_rope.length() > 0.2:
 			facing = to_rope.normalized()
@@ -662,9 +671,9 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if rope:
 		# The rope only stretches so far.
-		var anchor = rope.rope_anchor()
+		var anchor = rope.rope_anchor(rope_slot)
 		var off = Vector3(global_position.x - anchor.x, 0, global_position.z - anchor.z)
-		var most = SF.TRIP["slack"] + SF.TRIP["pull_len"]
+		var most = SF.TRIP["slack"] + rope.lift()
 		if off.length() > most:
 			var out = off.normalized()
 			global_position = Vector3(anchor.x + out.x * most, global_position.y, anchor.z + out.z * most)

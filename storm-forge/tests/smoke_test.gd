@@ -200,17 +200,28 @@ func _run() -> void:
 	var away = Vector3(anv.rope_anchor().x - anv.global_position.x, 0, 1.0).normalized()
 	smith.in_hold = true
 	smith.in_move = Vector2(away.x, away.z)
+	for i in 45:
+		await physics_frame
+	smith.in_move = Vector2.ZERO
+	await frames(20)
+	var h_stop: float = anv.ham_h
+	check(h_stop > 0.2 and h_stop < lift - 0.2, "backing up part way lifts the hammer part way")
+	await frames(20)
+	check(absf(anv.ham_h - h_stop) < 0.01 and absf(anv.ham_h - smith.rope_pull()) < 0.01, "the hammer stops when you stop: it hangs right where the rope holds it")
+	smith.in_move = Vector2(away.x, away.z)
 	var most = 0.0
-	for i in 150:
+	for i in 220:
 		await physics_frame
 		var off = smith.global_position - anv.rope_anchor()
 		most = maxf(most, Vector2(off.x, off.z).length())
-	check(most <= SF.TRIP["slack"] + SF.TRIP["pull_len"] + 0.05, "the rope only stretches so far")
-	check(anv.ham_h > lift * 0.5 and anv.ham_h <= lift * SF.TRIP["solo"] + 0.01, "one smith hauls the hammer part way up")
-	check(smith.rope_pull() > 0.95, "walking back pulls the rope taut")
+	check(most <= SF.TRIP["slack"] + lift + 0.05, "the rope is as long as the frame is tall, and no longer")
+	check(anv.ham_h >= lift - 0.01, "one smith can back up far enough to haul it all the way up")
+	var s0: int = smith.rope_slot
 	smith.in_hold = false
 	smith.in_move = Vector2.ZERO
-	await frames(30)
+	await frames(6)
+	check(anv.handle_pos[s0].distance_to(anv.handle_rest(s0)) > 0.3 and anv.handle_vel[s0].length() > 0.5, "the loose rope whips back and swings instead of snapping home")
+	await frames(24)
 	check(smith.rope == null and anv.ham_h == 0.0, "letting go drops the hammer")
 	check(anv.shape > 0.3 and anv.shape < SF.TRIP["shape_needed"], "the slam shapes the ingot a bit")
 	# Two haulers lift it to the top; a full slam knocks nearby smiths off their feet.
@@ -222,6 +233,12 @@ func _run() -> void:
 		main.do_action(pair[0], "use", {})
 		pair[0].in_hold = true
 		pair[0].in_move = Vector2(away.x, away.z)
+	check(smith.rope == anv and miner.rope == anv and smith.rope_slot != miner.rope_slot, "two smiths grab the two separate ropes")
+	put(finisher, anv.handle_rest(1))
+	main.do_action(finisher, "use", {})
+	check(finisher.rope == null, "no third rope: both are taken")
+	put(finisher, anv.global_position + Vector3(-0.6, 0, 1.4))
+	check(smith.ring.mesh is TorusMesh, "the circle under smiths is just an outline")
 	for i in 150:
 		await physics_frame
 	check(anv.ham_h >= lift - 0.01, "two smiths haul it all the way up")
@@ -266,13 +283,16 @@ func _run() -> void:
 	var tp = tank.target_point()
 	put(miner, Vector3(tank.global_position.x + 0.4, 0, tank.global_position.z + 4.5))
 	miner.facing = Vector3(0, 0, -1)
-	await frames(1)
+	await frames(8)
+	miner.facing = Vector3(0, 0, -1)
+	tank.beat_t = (PI * 1.5) / tank.target_speed()   # target off at the far left end: this throw (in a lane right of the middle) mustn't hit it
+	var lane_x = miner.hand_position().x   # the throw flies straight on from your hand
 	var rock = main.spawn_item("ore", miner.hand_position(), {"ore": "copper"})
 	rock.linear_velocity = main.throw_impulse(miner)
 	var closest = 99.0
 	for i in 90:
 		await physics_frame
-		closest = minf(closest, rock.global_position.distance_to(Vector3(miner.global_position.x, tp.y, tp.z)))
+		closest = minf(closest, rock.global_position.distance_to(Vector3(lane_x, tp.y, tp.z)))
 	check(closest < 0.4, "an aimed throw reaches the target's height in your lane")
 	main.despawn(rock)
 
