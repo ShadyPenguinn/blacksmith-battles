@@ -72,6 +72,7 @@ def box_of(a, b):
 out = {
     'w': W, 'h': H, 'sprites': {n: list(map(int, v)) for n, v in place.items()},  # name: [atlas x, atlas y, w, h, x, y]
     'loops': meta['loops'], 'seg': meta['seg'], 'variants': meta['variants'],
+    'props': meta.get('props', []),
 }
 if 'hit-a' in meta['jobs']:
     out['hit_box'] = box_of('hit-a', 'hit-b')
