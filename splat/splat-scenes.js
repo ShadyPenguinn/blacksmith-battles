@@ -5,6 +5,7 @@
 //
 //   const s = SplatScenes.mount(el, 'forge');  s.start('Axe'); s.hit('P'); s.finish();
 //   const m = SplatScenes.mount(el, 'mine');   m.swing('+55 ore');
+//   const j = SplatScenes.mount(el, 'jobs');   j.act('+1 Miner'); j.count(5);   (every other spot works like this)
 (function () {
   const BASE = (document.currentScript && document.currentScript.src.replace(/[^/]*$/, '')) || 'splat/';
   const cache = {};
@@ -33,6 +34,13 @@
       popArea: [236, 300, 96, 112], // x0, x1, y0, y1: where the ore popups appear, above the boulder
       glows: [{ x: 97, y: 48, r: 26, c: '255,190,90', a: 0.16 }, { x: 193, y: 50, r: 22, c: '255,190,90', a: 0.14 },
         { x: 309, y: 46, r: 26, c: '255,190,90', a: 0.16 }, { x: 357, y: 62, r: 28, c: '255,190,90', a: 0.18 }]
+    },
+    // the generic spots: an idle loop, one act, props shown by count; landAt = seconds into the act when the pop and burst happen
+    jobs: {
+      dur: { idle: 1, act: 0.6 }, loops: {}, landAt: 0.25,
+      hit: [262, 62], burst: ['#f0e6c8', '#c8b890', '#d84a30'],
+      popArea: [200, 280, 30, 52],
+      glows: [{ x: 123, y: 74, r: 30, c: '255,190,90', a: 0.2 }, { x: 368, y: 76, r: 30, c: '255,190,90', a: 0.2 }]
     }
   };
   const PIECE = { Sword: 'sword', Axe: 'axe', Spear: 'spear', Shield: 'shield', Warhammer: 'hammer' };
@@ -119,6 +127,7 @@
         const secs = this.cfg.loops[k] || 1;
         this.sprite(names[Math.floor(((t % secs) / secs) * names.length) % names.length]);
       }
+      for (let i = 0; i < Math.min(this.nProps || 0, (this.meta.props || []).length); i++) this.sprite(this.meta.props[i]);
       this.sprite(this.frameName());
       // flickering light: soft additive glows over the lanterns and the furnace mouth
       c.globalCompositeOperation = 'lighter';
@@ -136,6 +145,29 @@
     }
   }
 
+  // a short text that floats up from a random spot in the scene's pop area (the +ore over the boulder, and so on)
+  Scene.prototype.pop = function (text) {
+    if (!this.meta || !this.cv.width || !this.cfg.popArea) return;
+    const [x0, x1, y0, y1] = this.cfg.popArea, x = x0 + Math.random() * (x1 - x0), y = y0 + Math.random() * (y1 - y0);
+    const e = document.createElement('span');
+    e.textContent = text;
+    e.style.cssText = `position:absolute;left:${(((x - this.ox) / this.cv.width) * 100).toFixed(1)}%;top:${(((y - this.oy) / this.cv.height) * 100).toFixed(1)}%;` +
+      'transform:translate(-50%,-50%);z-index:3;pointer-events:none;white-space:nowrap;font-weight:800;font-size:15px;color:#f3cf6a;' +
+      'text-shadow:0 1px 0 #2a1608,0 0 6px rgba(0,0,0,.8)';
+    this.el.appendChild(e);
+    if (e.animate) e.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%,-50%) translateY(-6px)', opacity: 1, offset: 0.35 }, { transform: 'translate(-50%,-50%) translateY(-26px)', opacity: 0 }], { duration: 850, easing: 'ease-out' });
+    setTimeout(() => e.remove(), 860);
+  };
+  // the other spots: act(label) plays the worker's one move and pops the label; count(n) shows the first n props
+  class Generic extends Scene {
+    act(label) {
+      if (this.seg === 'act' && !this.landed) this.land();
+      this.label = label; this.landed = false; this.play('act', ['idle']);
+    }
+    land() { this.landed = true; if (this.cfg.burst) this.burst(this.cfg.hit, 8, this.cfg.burst, 0.8); if (this.label) this.pop(this.label); this.label = null; }
+    step(dt) { super.step(dt); if (this.seg === 'act' && !this.landed && this.segT >= this.cfg.landAt) this.land(); }
+    count(n) { if (n !== this.nProps) { this.nProps = n; this.draw(); } }
+  }
   class Forge extends Scene {
     constructor(el) { super(el, 'forge'); this.onEnd = seg => this.ended(seg); }
     // a new blank goes on the anvil and the hammer comes up
@@ -174,22 +206,11 @@
       if (this.label) this.pop(this.label);
       this.label = null;
     }
-    pop(text) {
-      if (!this.meta || !this.cv.width) return;
-      const [x0, x1, y0, y1] = this.cfg.popArea, x = x0 + Math.random() * (x1 - x0), y = y0 + Math.random() * (y1 - y0);
-      const e = document.createElement('span');
-      e.textContent = text;
-      e.style.cssText = `position:absolute;left:${(((x - this.ox) / this.cv.width) * 100).toFixed(1)}%;top:${(((y - this.oy) / this.cv.height) * 100).toFixed(1)}%;` +
-        'transform:translate(-50%,-50%);z-index:3;pointer-events:none;white-space:nowrap;font-weight:800;font-size:15px;color:#f3cf6a;' +
-        'text-shadow:0 1px 0 #2a1608,0 0 6px rgba(0,0,0,.8)';
-      this.el.appendChild(e);
-      if (e.animate) e.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%,-50%) translateY(-6px)', opacity: 1, offset: 0.35 }, { transform: 'translate(-50%,-50%) translateY(-26px)', opacity: 0 }], { duration: 850, easing: "ease-out" });
-      setTimeout(() => e.remove(), 860);
-    }
   }
 
   window.SplatScenes = {
-    mount(el, name) { return name === 'forge' ? new Forge(el) : name === 'mine' ? new Mine(el) : null; },
+    mount(el, name) { return name === 'forge' ? new Forge(el) : name === 'mine' ? new Mine(el) : SCENES[name] ? new Generic(el, name) : null; },
+    names: () => Object.keys(SCENES),
     supported: !!(window.fetch && window.requestAnimationFrame && document.createElement('canvas').getContext)
   };
 })();

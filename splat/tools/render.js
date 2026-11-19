@@ -37,8 +37,22 @@ const SCENES = {
       strike: { t: [1.0, 1.04, 1.075, 1.1, 1.12], variants: false },
       recover: { t: [1.15, 1.2, 1.26, 1.32, 1.38, 1.44], variants: false }
     }
-  }
+  },
+  // the generic shape used by the other spots: an idle loop, one act played on the tab's main button, optional props
+  // switched on one at a time with TOY_PROP (each kept as its own cut-out, shown by count in the toy)
+  jobs: generic('toy-jobs.js', ['--zoom', '2.0', '--target', '0,1.7,-0.8'], { idle: 1, act: 0.6 }, 12, 'n')
 };
+function generic(file, view, dur, nProps, prefix) {
+  return {
+    file,
+    view: ['--tone', 'off', ...view],
+    bg: { TOY_WORKER: '0' },
+    loops: {},
+    actor: { env: {}, variants: [''] },
+    seg: { idle: { t: steps(0, 1, 12), variants: false }, act: { t: steps(1, 1 + dur.act, Math.round(dur.act * 20)), variants: false } },
+    props: [...Array(nProps)].map((_, i) => prefix + i)
+  };
+}
 const name = process.argv[2];
 const SC = SCENES[name];
 if (!SC) throw new Error('usage: render.js ' + Object.keys(SCENES).join('|'));
@@ -57,6 +71,8 @@ for (const [k, G] of Object.entries(SC.seg)) {
   for (const v of vs)
     G.t.forEach((t, i) => jobs.push({ name: `${v ? v + '-' : ''}${k}-${i}`, env: { ...SC.actor.env, ...(v ? { [SC.actor.variable]: v } : {}) }, t }));
 }
+for (const pr of SC.props || []) jobs.push({ name: `prop-${pr}`, env: { ...SC.bg, TOY_PROP: pr }, t: 0 });
+layout.props = (SC.props || []).map(pr => `prop-${pr}`);
 if (SC.hit) {
   jobs.push({ name: 'hit-a', env: SC.hit.a, t: SC.hit.t }, { name: 'hit-b', env: SC.hit.b, t: SC.hit.t });
 }

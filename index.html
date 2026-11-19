@@ -217,7 +217,7 @@ label.ck{display:flex;gap:6px;align-items:center;font-size:13px}
   <div id="view"></div>
   <nav class="tabs" role="tablist"><div class="navgrid">
     <button class="tab" role="tab" data-t="mine" data-n="Mine" aria-selected="true">Mine</button>
-    <button class="tab" role="tab" data-t="shop" data-n="Workshop" aria-selected="false">Workshop</button>
+    <button class="tab" role="tab" data-t="shop" data-n="Job Board" aria-selected="false">Job Board</button>
     <button class="tab" role="tab" data-t="upg" data-n="Upgrades" aria-selected="false">Upgrades</button>
     <button class="tab" role="tab" data-t="forge" data-n="Forge" aria-selected="false">Forge</button>
     <button class="tab" role="tab" data-t="sanctum" data-n="Sanctum" aria-selected="false">Sanctum</button>
@@ -524,7 +524,7 @@ function chips(){
 // Left to right: the Mine at the cliff edge, the town (Workshop, study, Forge, Sanctum, market, Armory, Barracks), and the town gate where Expeditions leave.
 const LOCS=[
   {t:'mine',n:'Mine',sky:'linear-gradient(#141020,#2a1f2c)',light:'#ffb35c',bld:'cave',crew:()=>U('miner')+U('prospector'),col:'#c08850'},
-  {t:'shop',n:'Workshop',sky:'linear-gradient(#1a1626,#33262a)',light:'#ffcf7a',bld:'house',crew:()=>Math.round(UNITS.reduce((a,u)=>a+U(u.k),0)/8),col:'#b9a27c'},
+  {t:'shop',n:'Job Board',sky:'linear-gradient(#1a1626,#33262a)',light:'#ffcf7a',bld:'house',crew:()=>Math.round(UNITS.reduce((a,u)=>a+U(u.k),0)/8),col:'#b9a27c'},
   {t:'upg',n:'Upgrades',sky:'linear-gradient(#18172a,#2c2634)',light:'#d9e6ff',bld:'study',crew:()=>U('researcher'),col:'#8fa7c4'},
   {t:'forge',n:'Forge',sky:'linear-gradient(#1c1420,#3a2420)',light:'#ff7a2e',bld:'forge',crew:()=>U('smith'),col:'#d9773c'},
   {t:'sanctum',n:'Sanctum',sky:'linear-gradient(#140f26,#2b1f3d)',light:'#b69cff',bld:'tower',crew:()=>U('arcanist'),col:'#a58bf0'},
@@ -544,14 +544,18 @@ const BLD={
   gate:'<div style="width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:96px;bottom:0;width:34px;height:96px;background:#3a3434"></div><div style="position:absolute;left:30px;bottom:44px;width:70px;height:26px;background:#3a3434"></div><div style="position:absolute;left:34px;bottom:0;width:62px;height:44px;background:#0b0809;border-radius:31px 31px 0 0"></div>'};
 let worldIdx=-1;
 function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L=>`<div class="loc" data-loc="${L.t}"><div class="sky" style="background:${L.sky}"></div><div class="glow" style="left:calc(28% - 30px);background:${L.light}"></div><div class="bld" style="left:22%">${BLD[L.bld]}</div><div class="crowd"></div><div class="gnd"></div><div class="sign">${L.n}</div></div>`).join('');
-  if(window.SplatScenes&&SplatScenes.supported)for(const k of ['mine','forge']){const el=st.querySelector(`[data-loc="${k}"]`);if(el)try{SPLAT[k]=SplatScenes.mount(el,k)}catch(e){}}}
+  // each splat scene mounts on its spot; SPLAT is keyed by the spot (the Job Board scene lives on the old 'shop' spot)
+  if(window.SplatScenes&&SplatScenes.supported)for(const k of SplatScenes.names()){const at=SPLAT_AT[k]||k,el=st.querySelector(`[data-loc="${at}"]`);if(el)try{SPLAT[at]=SplatScenes.mount(el,k)}catch(e){}}}
+const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
+// what each scene shows by count: notices on the Job Board (one per kind of worker hired)
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length)}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
     if(you&&worldIdx>=0){you.classList.toggle('left',i<worldIdx);you.classList.add('walk');clearTimeout(updateWorld.t);updateWorld.t=setTimeout(()=>you.classList.remove('walk'),Math.min(1600,450+150*dist))}worldIdx=i}
   LOCS.forEach((L,k)=>{const el=st.children[k];if(!el)return;const open=tabOpen(L.t);el.classList.toggle('locked',!open);el.querySelector('.sign').textContent=open?L.n:'???';
-    const n=open?Math.min(CROWD_MAX,L.crew()|0):0,c=el.querySelector('.crowd');if(+c.dataset.n!==n){c.dataset.n=n;c.innerHTML=crowdHtml(n,L.col)}})}
+    const n=open?Math.min(CROWD_MAX,L.crew()|0):0,c=el.querySelector('.crowd');splatCounts();if(+c.dataset.n!==n){c.dataset.n=n;c.innerHTML=crowdHtml(n,L.col)}})}
 // Up to 60 figures per spot (one per hire), packed into rows that step back and darken, each bobbing on its own beat. CSS animations stay smooth at this count.
 const CROWD_MAX=60,PER_ROW=15;
 function crowdHtml(n,col){let h='';for(let j=0;j<n;j++){const row=Math.floor(j/PER_ROW),k=j%PER_ROW,x=(k*11+(row%2)*5+((j*37)%5))*.92,y=row*6;h+=`<span class="fig" style="left:${x}px;bottom:${y}px;z-index:${10-row};background:${col};filter:brightness(${1-row*.16});animation-delay:${-((j*.37)%1.8).toFixed(2)}s;animation-duration:${(1.5+(j%5)*.15).toFixed(2)}s"></span>`}return h}
@@ -671,7 +675,7 @@ function mineView(){
   return `<div class="grid2"><section class="panel">
   <div class="dig"><button class="vein" id="tapore"><span class="big">Ore vein</span><span class="pertap">+${fmtN(orePerTap())} per tap</span></button></div>
   <p class="autorate">Automatic: <b>${fmtR(orePerSec())}</b> ore/s</p>
-  ${U('smith')?'':`<p class="note" style="padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">Dig ${UN.smith.base} ore, then hire your first Blacksmith in the Workshop to open the forge.</p>`}</section>
+  ${U('smith')?'':`<p class="note" style="padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">Dig ${UN.smith.base} ore, then hire your first Blacksmith at the Job Board to open the forge.</p>`}</section>
   </div>
   ${inClaude()?`<p class="note" style="text-align:right;margin-top:10px"><button class="b sm" id="reset">${resetArm?'Click again to erase everything':'Start over'}</button></p>`:`<section class="panel" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h2>Save file</h2><span class="note">${S.lastBackup?`Last backup ${backupAgo()}`:'Never backed up'}</span></div>
   ${backupDue()?`<p class="note" style="margin:0;color:var(--gold)">Save a copy now and then, so a cleared browser can't wipe this game.</p>`:''}
@@ -687,7 +691,7 @@ function forgeView(){
   const mats=Object.keys(MATS),mg=tab==='sanctum',here=archsOpen().filter(a=>stationOf(a)===tab);
   return `<div class="grid2">
   <section class="panel anvil">
-    <div><h3>Pattern</h3>${here.length?slider('arch',here,pick.arch,pick.arch,'',`${ARCH[pick.arch].note}${U(specOf(pick.arch))>1?` Your ${UN[specOf(pick.arch)].n}s add +${3*U(specOf(pick.arch))}% ${UN[specOf(pick.arch)].sig.join('/')}.`:''}`):mg?'<span class="note">Your Arcanist keeps the Sanctum but has no patterns yet. Hire a Staffcarver or a Bookbinder in the Workshop to bind something.</span>':'<span class="note">Your Blacksmith has a forge but no patterns. Hire a weapon specialist in the Workshop to forge something.</span>'}</div>
+    <div><h3>Pattern</h3>${here.length?slider('arch',here,pick.arch,pick.arch,'',`${ARCH[pick.arch].note}${U(specOf(pick.arch))>1?` Your ${UN[specOf(pick.arch)].n}s add +${3*U(specOf(pick.arch))}% ${UN[specOf(pick.arch)].sig.join('/')}.`:''}`):mg?'<span class="note">Your Arcanist keeps the Sanctum but has no patterns yet. Hire a Staffcarver or a Bookbinder at the Job Board to bind something.</span>':'<span class="note">Your Blacksmith has a forge but no patterns. Hire a weapon specialist at the Job Board to forge something.</span>'}</div>
     <div><h3>Material</h3>${slider('mat',mats.slice(0,(S.matTier||0)+1),pick.mat,pick.mat,`holds ${matCap(pick.mat)} slams`,'')}</div>
     ${true?`<div><h3>Blank size</h3><div class="stepper"><button class="b" data-size="${blankSize()-1}" aria-label="Fewer slams" ${F||blankSize()<=1?'disabled':''}>−</button><div class="sv"><b>${blankSize()}</b><span>slams</span></div><button class="b" data-size="${blankSize()+1}" aria-label="More slams" ${F||blankSize()>=slamLimit()?'disabled':''}>+</button></div><p class="stepcost">${fmtN(blankCost(pick.mat))} ore</p>
     ${blankSize()>=slamLimit()&&maxStrikes()>matCap(pick.mat)?`<p class="note" style="margin:4px 0 0;text-align:center;color:var(--gold)">${pick.mat} can only take ${matCap(pick.mat)} slams. Your Hammer drills allow ${maxStrikes()}: unlock a stronger metal to use them.</p>`:''}
@@ -752,7 +756,7 @@ function armoryView(){
 }
 function squadHtml(){
   const c=armyCap(),lab=Array.from({length:c},(_,i)=>`Hero ${i+1} · ${RANKN[rankOf(i,c)-1]}`);
-  return `<div class="armyslide"><button class="b arr" id="armyL" aria-label="Toward the back">‹</button><div class="armytrack" id="armytrack">${S.squad.slice(0,c).map((id,i)=>[id,i]).reverse().map(([id,i])=>{if(i>=squadSlots())return `<div class="sq" style="opacity:.55"><span class="lbl">${lab[i]}</span><span class="note">Locked. Hire ${UN.squire.ms[i][0]} Squires in the Workshop.</span></div>`;const w=id&&byId(id);return w?`<div class="sq full"><span class="lbl">${lab[i]}</span><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b><span class="note">Power ${power(w,i)}${!canReach(w.arch,i,c)?` · can't reach from the ${RANKN[rankOf(i,c)-1]}, offense halved`:''}</span>${allTraits(w).length?`<span class="tr">${esc(allTraits(w).join(', '))}</span>`:''}<div class="row">${i>0?`<button class="b sm" data-mv="${i}" title="Move toward the front">▶</button>`:''}<button class="b sm" data-pick="${i}">Change</button><button class="b sm" data-uneq="${w.id}">Remove</button></div></div>`:`<div class="sq"><span class="lbl">${lab[i]}</span><span class="note">Empty</span><div class="row"><button class="b sm primary" data-pick="${i}" ${S.weapons.length?'':'disabled'}>Choose weapon</button></div></div>`}).join('')}</div><button class="b arr" id="armyR" aria-label="Toward the front">›</button></div>`;
+  return `<div class="armyslide"><button class="b arr" id="armyL" aria-label="Toward the back">‹</button><div class="armytrack" id="armytrack">${S.squad.slice(0,c).map((id,i)=>[id,i]).reverse().map(([id,i])=>{if(i>=squadSlots())return `<div class="sq" style="opacity:.55"><span class="lbl">${lab[i]}</span><span class="note">Locked. Hire ${UN.squire.ms[i][0]} Squires at the Job Board.</span></div>`;const w=id&&byId(id);return w?`<div class="sq full"><span class="lbl">${lab[i]}</span><b>${wName(w)}${ups(w)?` +${ups(w)}`:''}</b><span class="note">Power ${power(w,i)}${!canReach(w.arch,i,c)?` · can't reach from the ${RANKN[rankOf(i,c)-1]}, offense halved`:''}</span>${allTraits(w).length?`<span class="tr">${esc(allTraits(w).join(', '))}</span>`:''}<div class="row">${i>0?`<button class="b sm" data-mv="${i}" title="Move toward the front">▶</button>`:''}<button class="b sm" data-pick="${i}">Change</button><button class="b sm" data-uneq="${w.id}">Remove</button></div></div>`:`<div class="sq"><span class="lbl">${lab[i]}</span><span class="note">Empty</span><div class="row"><button class="b sm primary" data-pick="${i}" ${S.weapons.length?'':'disabled'}>Choose weapon</button></div></div>`}).join('')}</div><button class="b arr" id="armyR" aria-label="Toward the front">›</button></div>`;
 }
 function pickModal(i){
   const c=armyCap(),lab=Array.from({length:c},(_,j)=>`Hero ${j+1} (${RANKN[rankOf(j,c)-1]})`),cur=S.squad[i];
@@ -790,7 +794,7 @@ function equipBest(){const c=armyCap(),pool=[...S.weapons].filter(w=>w.state!==1
 function fightView(){
   const ready=S.squad.some(id=>id&&byId(id)&&byId(id).state!==1);
   return `<div class="grid2">
-  <section class="panel">${ready?'':`<p class="note" style="margin:0 0 8px;padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">${S.weapons.length?'Equip a weapon on one of your heroes below to set out on an Expedition.':'Your heroes are ready to set out, but they have nothing to fight with. Hire a Blacksmith and a Swordsmith in the Workshop and forge them some weapons.'}</p>`}<div class="row" style="justify-content:space-between"><h2>Your army</h2><span class="note">Army Power <b style="color:var(--fg)">${squadPower(S.squad)}</b></span></div>
+  <section class="panel">${ready?'':`<p class="note" style="margin:0 0 8px;padding:8px;border-left:3px solid var(--ember);background:var(--panel2);border-radius:6px">${S.weapons.length?'Equip a weapon on one of your heroes below to set out on an Expedition.':'Your heroes are ready to set out, but they have nothing to fight with. Hire a Blacksmith and a Swordsmith at the Job Board and forge them some weapons.'}</p>`}<div class="row" style="justify-content:space-between"><h2>Your army</h2><span class="note">Army Power <b style="color:var(--fg)">${squadPower(S.squad)}</b></span></div>
     <div class="row" style="justify-content:space-between"><span class="note">${S.squad.slice(0,armyCap()).filter(Boolean).length}/${armyCap()} heroes armed${armyCap()<ARMY_PROTO?` · next hero at ${fmtN(heroAt(armyCap()+1))} renown`:''}</span><button class="b sm" id="eqbest" ${battle?.live?'disabled':''}>Equip best</button></div>
     <div style="margin:8px 0 10px">${squadHtml()}</div>
     <div class="row"><button class="b primary" id="exp" ${!ready||battle?.live||waitLeft()?'disabled':''}>${waitLeft()?`Regrouping ${waitLeft()}s`:expLabel()}</button><button class="b" id="ghost" ${!ready||battle?.live?'disabled':''}>Ladder: fight a rival's ghost</button></div>
@@ -828,7 +832,7 @@ let resetArm=false;
 
 /* ---------- forge minigame ---------- */
 function startForge(){
-  if(!archsOpen().length){toast('Nothing to forge yet. Look for a weapon specialist in the Workshop.');return}
+  if(!archsOpen().length){toast('Nothing to forge yet. Look for a weapon specialist at the Job Board.');return}
   if(!archsOpen().includes(pick.arch)){pick.arch=archsOpen()[0]}
   const bc=blankCost(pick.mat); if(S.ore<bc){toast(`Need ${fmtN(bc)} ore. Dig in the Mine.`);return}
   S.ore-=bc; let core=null;if(pick.core&&(S.cores[pick.core]||0)>0){core=pick.core;S.cores[core]--;if(!S.cores[core])pick.core=null}
@@ -1222,7 +1226,7 @@ document.addEventListener('click',e=>{if(!owns())return;
     closeModal();S.gold+=price;S.renown+=ren;S.weapons=S.weapons.filter(x=>x!==w);S.squad=S.squad.map(i=>i===w.id?null:i);save();render();toast(`Sold ${wName(w)} for ${price} gold${ren?`, +${ren} renown`:''}`)}
   else if(d.mend){const w=byId(+d.mend);if(w&&S.gold>=mendCost()){S.gold-=mendCost();w.state=2;if(w.res.length>maxSlots(w))w.res.length=maxSlots(w);save();render();toast('Mended. The scar costs one slot.')}}
   else if(d.ut){upgTab=d.ut;resetArm=false;render()}
-  else if(d.hire){const k=d.hire,c=unitCost(k);if(S.ore>=c){const before=reached(k);S.ore-=c;S.units[k]=U(k)+1;
+  else if(d.hire){const k=d.hire,c=unitCost(k);if(S.ore>=c){const before=reached(k);S.ore-=c;S.units[k]=U(k)+1;if(SPLAT.shop)SPLAT.shop.act('+1 '+UN[k].n);
     const after=reached(k);if(after>before){toast(`${UN[k].n} milestone: ${UN[k].ms[after-1][1]}`);syncOrders()}save();render()}}
   else if(d.learn||d.rankup){const[h,k]=(d.learn||d.rankup).split('|'),tt=S.titles[+h],r=(tt[k]||0)+1,c=titleCost(r);
     if(S.gold>=c&&r<=TITLE_MAX&&(tt[k]||Object.keys(tt).length<titleSlotsFor(+h))){S.gold-=c;tt[k]=r;save();render()}}
@@ -1280,7 +1284,7 @@ function start(data){
   const localT=data&&data.S?(+data.S.t||0):(load.t||0);
   repair();save();cloudInit(localT);
   let lastDrip=Date.now();const drip=setInterval(()=>{if(!owns()){clearInterval(drip);return}const now=Date.now(),gap=(now-lastDrip)/1000;lastDrip=now;if(gap>30){awayGrant(gap);save();return}S.ore+=orePerSec()/10+(S.autopick||0)*orePerTap()/10;S.gold+=goldPerSec()/10;chips()},100); // income ticks 10 times a second so it rolls smoothly (Jonathan, 2026-11-16)
-  const tk=setInterval(()=>{if(!owns()){clearInterval(tk);return}{const nw=revealUnits();if(nw.length){toast(`A ${nw[0]} is looking for work in the Workshop`);if(tab==='shop')render()}}if(tab==='shop')shopRefresh();
+  const tk=setInterval(()=>{if(!owns()){clearInterval(tk);return}{const nw=revealUnits();if(nw.length){toast(`A ${nw[0]} is looking for work at the Job Board`);if(tab==='shop')render()}}if(tab==='shop')shopRefresh();
     if(atStation()&&!F){const h=$('#forgehint');if(h)h.textContent=forgeHint()}
     if(tickOrders(Date.now())){save();toast('A new customer is waiting in Orders');if(tab==='orders')render();else orderLabel()}
     document.querySelectorAll('.cd').forEach(el=>el.textContent=fmtCd());
