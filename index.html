@@ -549,7 +549,7 @@ function buildWorld(){const st=$('#strip');if(!st)return;st.innerHTML=LOCS.map(L
 const SPLAT_AT={jobs:'shop'};
 const SPLAT=window.SPLAT={}; // the splat scenes in the strip, when they load
 // what each scene shows by count: notices on the Job Board (one per kind of worker hired)
-function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length)}
+function splatCounts(){if(SPLAT.shop&&SPLAT.shop.count)SPLAT.shop.count(UNITS.filter(u=>U(u.k)>0).length);if(SPLAT.orders&&SPLAT.orders.count)SPLAT.orders.count(S.orders.filter(Boolean).length)}
 function updateWorld(){const st=$('#strip');if(!st)return;if(!st.children.length)buildWorld();
   const i=Math.max(0,LOCS.findIndex(L=>L.t===tab)),dist=worldIdx<0?0:Math.abs(i-worldIdx),you=$('#you');
   if(i!==worldIdx){st.style.transitionDuration=worldIdx<0?'0s':Math.min(1.6,.45+.15*dist)+'s';st.style.transform=`translateX(${-100*i}%)`;
@@ -1223,7 +1223,7 @@ document.addEventListener('click',e=>{if(!owns())return;
   else if(d.mv){const i=+d.mv;[S.squad[i-1],S.squad[i]]=[S.squad[i],S.squad[i-1]];save();render()}
   else if(d.sell||d.deliver){const w=byId(+(d.sell||d.deliver));if(!w)return;if(S.squad.includes(w.id)){toast('Unequip this weapon before selling or delivering it.');return}if(w.locked){toast('Unlock this weapon before selling or delivering it.');return}tally().sold++;let price=sellPrice(w),ren=0;
     if(d.deliver){const oi=orderFor(w);if(oi<0){toast('Unequip this weapon before delivering it.');return}{price=Math.round(price*S.orders[oi].mult);ren=S.orders[oi].ren;openSlot(oi)}}
-    closeModal();S.gold+=price;S.renown+=ren;S.weapons=S.weapons.filter(x=>x!==w);S.squad=S.squad.map(i=>i===w.id?null:i);save();render();toast(`Sold ${wName(w)} for ${price} gold${ren?`, +${ren} renown`:''}`)}
+    closeModal();if(d.deliver&&SPLAT.orders&&SPLAT.orders.act)SPLAT.orders.act(`+${fmtN(price)} gold`);S.gold+=price;S.renown+=ren;S.weapons=S.weapons.filter(x=>x!==w);S.squad=S.squad.map(i=>i===w.id?null:i);save();render();toast(`Sold ${wName(w)} for ${price} gold${ren?`, +${ren} renown`:''}`)}
   else if(d.mend){const w=byId(+d.mend);if(w&&S.gold>=mendCost()){S.gold-=mendCost();w.state=2;if(w.res.length>maxSlots(w))w.res.length=maxSlots(w);save();render();toast('Mended. The scar costs one slot.')}}
   else if(d.ut){upgTab=d.ut;resetArm=false;render()}
   else if(d.hire){const k=d.hire,c=unitCost(k);if(S.ore>=c){const before=reached(k);S.ore-=c;S.units[k]=U(k)+1;if(SPLAT.shop)SPLAT.shop.act('+1 '+UN[k].n);
