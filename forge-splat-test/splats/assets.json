@@ -1,1 +1,6 @@
-{ "assets": [ { "id": "forge", "scene": "art/forge-live.js", "out": "splats/forge.bytes", "fps": 24, "secs": 1 } ] }
+{ "assets": [
+  { "id": "forge", "scene": "art/forge-live.js", "out": "splats/forge.bytes", "fps": 24, "secs": 2.5 },
+  { "id": "piece-sword", "kind": "prop", "scene": "art/piece-sword.js", "out": "splats/piece-sword.bytes" },
+  { "id": "piece-axe", "kind": "prop", "scene": "art/piece-axe.js", "out": "splats/piece-axe.bytes" },
+  { "id": "piece-spear", "kind": "prop", "scene": "art/piece-spear.js", "out": "splats/piece-spear.bytes" }
+] }

@@ -40,7 +40,11 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
     0x3a2a22, // 33 mortar
     0x5a3a2a, // 34 brick dark
     0x7a4a32, // 35 brick
-    0x9a6040 // 36 brick light
+    0x9a6040, // 36 brick light
+    0x6a4a3a, // 37 warm stone
+    0xa8704a, // 38 firelit stone
+    0xc8743a, // 39 firelit brick
+    0x120e12 // 40 near black
   ];
   const T = 1.0; // one hammer blow per second
   const IMPACT = 0.78; // when in the blow the hammer lands
@@ -48,24 +52,24 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
   function build(seed) {
     const B = makeBuilder(seed, PAL);
     const S = K.sculpt(makeSculpt(B));
-    S.sun = B.norm([-0.35, 0.85, 0.5]);
+    S.sun = B.norm([0.2, 0.6, -0.8]); // a dim sky behind the wall: the room itself is lit by the fire
     S.res = 0.08;
-    S.amb = 0.2;
-    S.sky = 0.25;
+    S.amb = 0.13;
+    S.sky = 0.12;
     const rnd = (i, s) => K.hash(i, s); // stable 0..1 per index
-    const WOOD = { r: [6, 7, 8] };
-    const IRON = { r: [9, 10, 11] };
-    const IRONHI = { r: [10, 11, 12] };
-    const COPPER = { r: [13, 14, 15] };
+    const WOOD = { r: [40, 6, 7, 8] };
+    const IRON = { r: [40, 9, 10, 11] };
+    const IRONHI = { r: [40, 9, 10, 11, 12] };
+    const COPPER = { r: [40, 13, 14, 15] };
     const COAL = { r: [26, 27] };
-    const BRICKS = [{ r: [34, 35, 35] }, { r: [34, 35, 35] }, { r: [34, 34, 35] }];
-    const FLAGS = [{ r: [2, 3, 4] }, { r: [2, 3, 3] }, { r: [3, 4, 5] }];
+    const BRICKS = [{ r: [40, 1, 33, 34, 35, 39] }, { r: [40, 1, 33, 34, 35, 39] }, { r: [40, 1, 33, 34, 34, 39] }];
+    const FLAGS = [{ r: [40, 1, 2, 3, 37, 38] }, { r: [40, 1, 2, 3, 37] }, { r: [40, 1, 2, 3, 37, 38] }];
 
     // fire light: one big warm lamp in the furnace mouth, a small one on the anvil
-    S.lights.push({ p: [-1.9, 0.9, 0.2], r: 4.2, s: 1.0 }, { p: [0.45, 1.3, 0.5], r: 1.2, s: 0.45 });
+    S.lights.push({ p: [-1.9, 0.55, -0.2], r: 5.5, s: 1.5 }, { p: [-1.9, 0.6, 0.6], r: 3.2, s: 0.9 }, { p: [0.55, 1.05, 0.75], r: 2.3, s: 0.95 }, { p: [2.2, 1.6, 0.4], r: 2.4, s: 0.35 });
 
     // ---- the slab: a thick stone island the room sits on ----
-    S.box([0, -0.35, 0.0], [3.6, 0.35, 2.1], { r: [1, 2, 2, 3] }, { res: 0.1, rd: 0.12 });
+    S.box([0, -0.35, 0.0], [3.6, 0.35, 2.1], { r: [40, 1, 1, 2] }, { res: 0.1, rd: 0.12 });
     // flagstones on top, each its own slab with a mortar gap
     const fw = 0.9, fd = 0.75;
     for (let ix = 0; ix < 8; ix++)
@@ -95,12 +99,12 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
       }
     }
     // mortar behind the bricks so gaps read dark, not see-through
-    S.box([0, 1.7, -2.15], [3.55, 1.62, 0.06], { r: [33] }, { res: 0.12 });
-    S.box([-3.55, 1.3, 0.2], [0.06, 1.22, 2.05], { r: [33] }, { res: 0.12 });
+    S.box([0, 1.7, -2.15], [3.55, 1.62, 0.06], { r: [40] }, { res: 0.12 });
+    S.box([-3.55, 1.3, 0.2], [0.06, 1.22, 2.05], { r: [40] }, { res: 0.12 });
 
     // ---- furnace: stone body, arched mouth, iron bands with rivets, copper hood and chimney ----
     const FX = -1.9, FZ = -1.2;
-    const STONE = { r: [2, 3, 4, 5] };
+    const STONE = { r: [40, 1, 2, 3, 37, 38] };
     S.box([FX, 0.75, FZ], [0.95, 0.68, 0.75], STONE, { res: 0.07, rd: 0.08 });
     S.box([FX, 0.5, FZ + 0.55], [0.42, 0.32, 0.5], STONE, { neg: true });
     S.ball([FX, 0.82, FZ + 0.55], [0.42, 0.34, 0.5], STONE, { neg: true });
@@ -165,8 +169,7 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
     S.box([AX, 1.0 + AY, AZ], [0.36, 0.07, 0.17], IRONHI, { res: 0.025, rd: 0.02 });
     S.tube([[AX + 0.36, 1.0 + AY, AZ], [AX + 0.72, 1.03 + AY, AZ]], 0.08, 0.015, IRONHI, { res: 0.02 });
     S.box([AX - 0.42, 1.01 + AY, AZ], [0.07, 0.05, 0.12], IRONHI, { res: 0.02, rd: 0.015 });
-    // the glowing bar being worked
-    S.box([AX + 0.02, 1.1 + AY, AZ], [0.22, 0.03, 0.06], { r: [17, 18, 19], em: true }, { res: 0.018, rd: 0.01 });
+    // the hot piece being worked is its own prop (art/piece-*.js), shown on the anvil while forging
 
     // ---- quench barrel with hoops ----
     S.lathe([2.75, 0.06, 0.75], 0.62, t => 0.3 + 0.05 * Math.sin(t * Math.PI), WOOD, { res: 0.04 });
@@ -194,8 +197,8 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
     const tags = K.deform.tags(S);
     const SX = AX - 0.08, SZ = AZ - 0.62;
     const P = (f, y, sd) => [SX + sd, y, SZ + f]; // f: forward toward the viewer, sd: toward his hammer side
-    const SKIN = { r: [22, 23] }, SHIRT = { r: [24, 25] }, APRON = { r: [20, 21] }, BEARD = { r: [28, 29, 30] };
-    const BOOT = { r: [6, 7] }, GLOVE = { r: [20, 21] }, PANTS = { r: [9, 10] };
+    const SKIN = { r: [20, 13, 22, 23] }, SHIRT = { r: [40, 24, 25] }, APRON = { r: [40, 20, 21] }, BEARD = { r: [20, 28, 29, 30] };
+    const BOOT = { r: [40, 6, 7] }, GLOVE = { r: [40, 20, 21] }, PANTS = { r: [40, 9, 10] };
     for (const d of [-0.13, 0.13]) {
       S.box(P(0.05, 0.11, d), [0.09, 0.08, 0.14], BOOT, { tag: 'body', res: 0.025, rd: 0.05 });
       S.tube([P(0, 0.18, d), P(0, 0.42, d)], 0.085, 0.09, PANTS, { tag: 'body', res: 0.025 });
@@ -244,18 +247,20 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K, flame }) => {
         head: { ids: tags.head, pivot: [SX, 0.92, SZ], parent: 'body' },
         arm: { ids: tags.arm, pivot: SH, parent: 'body', slices: 2 }
       },
+      // One clip holding every move, played piece by piece by the game (see SEGMENTS):
+      // idle 0-1 s (arm down, breathing), raise 1-1.5, ready 1.5-2 (hammer up), slam 2-2.25, recover 2.25-2.5.
       pose(t, dt, pup) {
-        const u = (t % T) / T;
-        let lift, lean, squash;
-        if (u < 0.5) lift = ease(u / 0.5); // raise
-        else if (u < 0.66) lift = 1 + 0.06 * Math.sin(((u - 0.5) / 0.16) * Math.PI); // hang at the top
-        else if (u < IMPACT) { const k = (u - 0.66) / (IMPACT - 0.66); lift = 1 - k * k; } // slam
-        else lift = -0.04 * Math.sin(((u - IMPACT) / (1 - IMPACT)) * Math.PI); // rebound
-        squash = u >= IMPACT && u < IMPACT + 0.1 ? 1 - (u - IMPACT) / 0.1 : 0;
-        lean = lift * 6 - squash * 4;
+        const DOWN = -0.55;
+        let lift, squash = 0, breathe = 0;
+        if (t < 1) { lift = DOWN; breathe = Math.sin(t * Math.PI * 2); }
+        else if (t < 1.5) lift = DOWN + (1 - DOWN) * ease((t - 1) / 0.5);
+        else if (t < 2) lift = 1 + 0.05 * Math.sin(((t - 1.5) / 0.5) * Math.PI * 2);
+        else if (t < 2.25) { const k = (t - 2) / 0.25; lift = 1 - k * k; if (k > 0.8) squash = 1; }
+        else { const k = (t - 2.25) / 0.25; lift = ease(k); squash = Math.max(0, 1 - k * 2.5); }
+        const lean = Math.max(0, lift) * 6 - squash * 4;
         pup.pose.arm = { rot: [-lift * 120, 0, 0] };
-        pup.pose.body = { rot: [-lean, 0, 0], scale: [1 + 0.05 * squash, 1 - 0.06 * squash, 1 + 0.05 * squash] };
-        pup.pose.head = { rot: [lift * 4, 0, 0] };
+        pup.pose.body = { rot: [-lean, 0, 0], scale: [1 + 0.05 * squash + 0.012 * breathe, 1 - 0.06 * squash + 0.015 * breathe, 1 + 0.05 * squash] };
+        pup.pose.head = { rot: [Math.max(0, lift) * 4 - 3 * (lift < 0 ? 1 : 0), 0, 0] };
       }
     });
     return W;
