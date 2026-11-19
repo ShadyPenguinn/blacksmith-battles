@@ -694,8 +694,9 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 				p.act("place")
 		"use":
 			# By the anvil's rope handle: grab it (hold the button to keep hauling).
-			if anvil and anvil.near_handle(p):
-				p.grab_rope(anvil)
+			var slot = anvil.free_rope_for(p) if anvil else -1
+			if slot >= 0:
+				p.grab_rope(anvil, slot)
 				_say(p, "Hold on and walk back to haul the hammer up. Let go to drop it!")
 				return
 			var h = p.held
@@ -1112,7 +1113,7 @@ func hint(p) -> String:
 func make_snapshot() -> Dictionary:
 	var ps = []
 	for p in players:
-		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq, not p.is_on_floor(), p.flop, p.rope != null])
+		ps.append([p.global_position, p.visual.rotation, p.stun, p.slots.map(func(it): return it.net_id if it else 0), p.facing, p.sel, p.act_name, p.act_seq, not p.is_on_floor(), p.flop, p.rope_slot if p.rope != null else -1])
 	var its = {}
 	for it in get_tree().get_nodes_in_group("item"):
 		its[it.net_id] = [it.kind, it.tool, it.ore, it.tier, it.global_position, it.global_rotation,
@@ -1200,7 +1201,8 @@ func apply_snapshot(s: Dictionary) -> void:
 		if d.size() > 10:
 			p.net_air = d[8]
 			p.flop = d[9]
-			p.rope = anvil if d[10] else null
+			p.rope = anvil if d[10] >= 0 else null
+			p.rope_slot = maxi(d[10], 0)
 		if mod("big_heads") != heads_before:
 			p.set_big_head(1.0 + 1.0 * mod("big_heads"))
 	# Veins: match by id, add new ones, crumble the ones the host no longer has.

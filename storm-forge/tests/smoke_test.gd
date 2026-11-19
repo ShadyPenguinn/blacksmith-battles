@@ -216,10 +216,11 @@ func _run() -> void:
 		most = maxf(most, Vector2(off.x, off.z).length())
 	check(most <= SF.TRIP["slack"] + lift + 0.05, "the rope is as long as the frame is tall, and no longer")
 	check(anv.ham_h >= lift - 0.01, "one smith can back up far enough to haul it all the way up")
+	var s0: int = smith.rope_slot
 	smith.in_hold = false
 	smith.in_move = Vector2.ZERO
 	await frames(6)
-	check(anv.handle_pos.distance_to(anv.handle_rest()) > 0.3 and anv.handle_vel.length() > 0.5, "the loose rope whips back and swings instead of snapping home")
+	check(anv.handle_pos[s0].distance_to(anv.handle_rest(s0)) > 0.3 and anv.handle_vel[s0].length() > 0.5, "the loose rope whips back and swings instead of snapping home")
 	await frames(24)
 	check(smith.rope == null and anv.ham_h == 0.0, "letting go drops the hammer")
 	check(anv.shape > 0.3 and anv.shape < SF.TRIP["shape_needed"], "the slam shapes the ingot a bit")
@@ -232,6 +233,12 @@ func _run() -> void:
 		main.do_action(pair[0], "use", {})
 		pair[0].in_hold = true
 		pair[0].in_move = Vector2(away.x, away.z)
+	check(smith.rope == anv and miner.rope == anv and smith.rope_slot != miner.rope_slot, "two smiths grab the two separate ropes")
+	put(finisher, anv.handle_rest(1))
+	main.do_action(finisher, "use", {})
+	check(finisher.rope == null, "no third rope: both are taken")
+	put(finisher, anv.global_position + Vector3(-0.6, 0, 1.4))
+	check(smith.ring.mesh is TorusMesh, "the circle under smiths is just an outline")
 	for i in 150:
 		await physics_frame
 	check(anv.ham_h >= lift - 0.01, "two smiths haul it all the way up")
