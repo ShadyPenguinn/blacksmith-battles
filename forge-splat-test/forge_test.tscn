@@ -1,9 +1,11 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://forge_test.gd" id="1_test"]
 [ext_resource type="Script" path="res://addons/splats/splat_scene.gd" id="2_scene"]
 [ext_resource type="Script" path="res://addons/splats/splat_instance.gd" id="3_instance"]
 [ext_resource type="Shader" path="res://addons/splats/shaders/splat_present.gdshader" id="4_present"]
+[ext_resource type="Script" path="res://driven_instance.gd" id="5_driven"]
+[ext_resource type="Script" path="res://sparks.gd" id="6_sparks"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_present"]
 shader = ExtResource("4_present")
@@ -15,8 +17,24 @@ script = ExtResource("1_test")
 unique_name_in_owner = true
 
 [node name="Forge" type="Node3D" parent="World"]
-script = ExtResource("3_instance")
+unique_name_in_owner = true
+script = ExtResource("5_driven")
 asset = "res://splats/forge.bytes"
+
+[node name="Sword" type="Node3D" parent="World"]
+unique_name_in_owner = true
+script = ExtResource("3_instance")
+asset = "res://splats/piece-sword.bytes"
+
+[node name="Axe" type="Node3D" parent="World"]
+unique_name_in_owner = true
+script = ExtResource("3_instance")
+asset = "res://splats/piece-axe.bytes"
+
+[node name="Spear" type="Node3D" parent="World"]
+unique_name_in_owner = true
+script = ExtResource("3_instance")
+asset = "res://splats/piece-spear.bytes"
 
 [node name="Camera" type="Camera3D" parent="World"]
 unique_name_in_owner = true
@@ -38,9 +56,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.027, 0.031, 0.043, 1)
+mouse_filter = 2
 
 [node name="Picture" type="TextureRect" parent="."]
 unique_name_in_owner = true
+mouse_filter = 2
 texture_filter = 1
 material = SubResource("ShaderMaterial_present")
 anchors_preset = 15
@@ -59,3 +79,22 @@ offset_right = 880.0
 offset_bottom = 200.0
 theme_override_font_sizes/font_size = 28
 autowrap_mode = 3
+
+[node name="Sparks" type="Control" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("6_sparks")
+
+[node name="Hint" type="Label" parent="."]
+unique_name_in_owner = true
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -260.0
+offset_bottom = -160.0
+theme_override_font_sizes/font_size = 48
+horizontal_alignment = 1
