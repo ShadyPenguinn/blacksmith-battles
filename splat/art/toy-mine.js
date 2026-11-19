@@ -2,7 +2,7 @@
 // A cut-away cavern: a rock dome, timber frames with hanging lanterns, a tunnel mouth with rails and an ore cart,
 // puddles on the floor, a copper vein in the wall, and a slim miner who swings a pickaxe at an ore boulder.
 // Environment variables pick what is drawn (for the toy's sprite layers): TOY_WORKER=0 parks the miner out of view.
-// The clip: idle 0-1 s (pick resting), swing 1-1.6 (raise 1-1.3, strike 1.3-1.45, recover 1.45-1.6).
+// The clip: ready 0-1 s (pick raised over his shoulder, waiting for a tap), strike 1-1.12 (lands at 1.12), recover 1.12-1.5 (back up to ready).
 module.exports = ({ makeBuilder, makeSculpt, KIT: K }) => {
   const PAL = [
     0x070605, 0x14100e, 0x211a16, 0x30261f, 0x42352b, 0x584738, 0x725d4a, // 0-6 cave stone (umber)
@@ -155,12 +155,12 @@ module.exports = ({ makeBuilder, makeSculpt, KIT: K }) => {
     K.puppet(W, {
       parts: { body: { ids: tags.body, pivot: P(0, 0.2, 0), slices: 4 }, arm: { ids: tags.arm, pivot: SH, parent: 'body', slices: 2 } },
       pose(t, dt, pup) {
-        const ease = x => x * x * (3 - 2 * x), DOWN = -0.35;
+        // Jonathan (Nov 18): he waits with the pick up, and every tap is an instant strike
+        const ease = x => x * x * (3 - 2 * x);
         let lift, squash = 0, breathe = 0;
-        if (t < 1) { lift = DOWN; breathe = Math.sin(t * Math.PI * 2); }
-        else if (t < 1.3) lift = DOWN + (1 - DOWN) * ease((t - 1) / 0.3);
-        else if (t < 1.45) { const k = (t - 1.3) / 0.15; lift = 1 - k * k; if (k > 0.8) squash = 1; }
-        else { const k = (t - 1.45) / 0.15; lift = DOWN * ease(k); squash = Math.max(0, 1 - k * 2.5); }
+        if (t < 1) { breathe = Math.sin(t * Math.PI * 2); lift = 1 + 0.04 * breathe; }
+        else if (t < 1.12) { const k = (t - 1) / 0.12; lift = 1 - k * k; if (k > 0.9) squash = 1; }
+        else { const k = Math.min(1, (t - 1.12) / 0.38); lift = ease(k); squash = Math.max(0, 1 - k * 3); }
         pup.pose.arm = { rot: [0, 0, lift * 120] };
         pup.pose.body = { rot: [0, 0, Math.max(0, lift) * 6 - squash * 4], scale: [1 + 0.04 * squash, 1 - 0.05 * squash + 0.012 * breathe, 1 + 0.04 * squash] };
       }

@@ -25,7 +25,7 @@ const SCENES = {
     },
     hit: { a: { TOY_FIRE: '0', TOY_PIECE: 'bar' }, b: { TOY_FIRE: '0' }, t: 1 }
   },
-  // clip: idle 0-1 s, swing 1-1.6 (raise 1-1.3, strike 1.3-1.45, recover 1.45-1.6) (art/toy-mine.js)
+  // clip: ready-and-waiting 0-1 s, strike 1-1.12, recover 1.12-1.5 (art/toy-mine.js)
   mine: {
     file: 'toy-mine.js',
     view: ['--tone', 'off', '--zoom', '2.6', '--target', '0.7,0.95,0.3'],
@@ -34,7 +34,8 @@ const SCENES = {
     actor: { env: {}, variants: [''] },
     seg: {
       idle: { t: steps(0, 1, 12), variants: false },
-      swing: { t: [1.0, 1.06, 1.12, 1.18, 1.24, 1.3, 1.34, 1.38, 1.42, 1.45, 1.5, 1.55], variants: false }
+      strike: { t: [1.0, 1.04, 1.075, 1.1, 1.12], variants: false },
+      recover: { t: [1.15, 1.2, 1.26, 1.32, 1.38, 1.44], variants: false }
     }
   }
 };
