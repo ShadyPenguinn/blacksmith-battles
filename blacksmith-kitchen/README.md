@@ -1,0 +1,115 @@
+# Blacksmith Kitchen
+
+A hands-on forging game. Customers walk up to the counter and ask for a weapon. You make it
+yourself, one short minigame at a time: crack the ore, stomp the bellows, carry the hot ingot
+with tongs, hammer on the beat, quench, sharpen, wrap the grip. Every step gets a grade, and the
+finished weapon gets a medal. Old Grizzle, the retired barbarian who owns the forge, watches
+from the corner and has opinions.
+
+Solo is the main game. **Rush Hour** is a chaotic co-op mode for 1-4 players on one screen,
+built in the spirit of Storm Forge.
+
+Play in the browser: https://shadypenguinn.github.io/blacksmith-battles/blacksmith-kitchen/web/
+
+## Run it
+
+Open this folder in Godot 4.5 or newer (built and tested on 4.7) and press F5. It is its own
+project and doesn't touch Storm Forge or the tablet game.
+
+## What carried over from the old cooking-game formula
+
+Studied for mechanics and pacing only; names, characters, look and recipes here are all original.
+
+- **A recipe is a chain of tiny, physical steps**, each 5-15 seconds, each with its own gesture
+  (tap, hold, drag, alternate, trace, circle). Variety comes from the gesture, not from menus.
+- **Every step is graded on its own** (PERFECT / GREAT / OK / OOPS) and the dish's medal is the
+  average, so one bad step hurts but never ends the run. The next step always starts fresh.
+- **A mentor reacts to every step**. Big praise for perfects, a forgiving grumble for mistakes.
+- **Short intro card before each step**: name, one-line how-to, "Ready... GO!".
+- **Familiar steps repeat across recipes** and get harder with better ingredients, so a new
+  recipe is mostly steps you know plus one new one.
+- **Unlocks come from playing**: new recipes and ingredients appear as you clear days, and a
+  practice book lets you replay any recipe for a better medal.
+
+## Solo: Shop Days
+
+12 days. Each day 1-4 customers order a weapon in a metal. Clear a day (every order at Bronze or
+better) to open the next. Day 12 is Grizzle's own order. Weapons you've met are unlocked in the
+**Recipe Book** for practice, with the best medal saved per weapon and metal. Coins buy **Shop
+Upgrades** (bellows, longer tongs, a balanced hammer, a whetstone, and a cat).
+
+Metals: Copper, Bronze, Iron, Steel, Moonsilver, Starmetal. Harder metals tighten heat bands,
+speed up meters, and need more hammer ropes.
+
+### The 12 steps
+
+| Step | Gesture | Station |
+| --- | --- | --- |
+| Crack the Ore | click the glowing cracks before they fade | ore rock |
+| Stomp the Bellows | alternate left/right (A/D or click each side); same side twice only wheezes | furnace + Storm Forge bellows |
+| Pump the Lever | up/down (W/S, left/right click, or tap top/bottom) | furnace + new lever pump |
+| Tong Carry | grab the ingot that shoots out of the chimney, hold and drag it along the chalk path | floor between furnace and anvil |
+| Hammer Time | hit when the marker is in the middle | anvil |
+| Rope Drop | hold and drag down to haul the giant hammer; each rope only lifts so high, harder metals need 2-4 ropes; let go above the red flag | Storm Forge trip hammer kit |
+| Quench | hold to dunk; let go when the temper is in the blue zone | Storm Forge dunk tank |
+| Sharpen | pump two pedals in turn to keep the wheel speed in the green | KayKit grindstone + new pedals |
+| Wrap the Grip | over/under on the beat as the ring closes | workbench |
+| Polish | hold and scrub off grime | workbench |
+| Etch a Rune | trace through numbered dots | workbench |
+| Fit the Handle | drop the swinging handle into the socket, then tap it home | workbench |
+
+### Recipes
+
+Dagger, Arming Sword, Spear, Hand Axe, War Hammer, Rune Staff, Round Shield, Greatsword,
+Halberd. Each has 5-9 steps; the lists are in `WEAPONS` in `scripts/bk.gd`.
+
+## Co-op: Rush Hour
+
+Same workshop, seen from above. Tickets arrive at the counter; customers storm off when their
+timer runs out. 3.5 minute shift, stars at 60/180/320 coins.
+
+1. **GRAB** at the rock for ore, **GRAB** at the furnace to load it.
+2. **USE** on the two bellows, alternating sides, to hold the furnace in the gold band. Over-stomp
+   and it burps a fireball that knocks everyone back and slags the batch.
+3. The hot ingot shoots out of the chimney and lands somewhere random. **Hold USE** next to it to
+   grip it with tongs; keep holding while you walk, let go at the anvil. Grabbing it bare-handed
+   burns you. It goes cold after 25 s (cold ingots go back in the furnace).
+4. **USE** at the anvil when the beat marker is in the gold. Two smiths hammer twice as fast.
+5. **GRAB** to drop the blank in the quench tank and pull it out while it says GRAB IT NOW.
+   Each dunk uses water: take the bucket to the well (far left), **USE** to fill, **USE** at the
+   tank to pour. Bucket relay.
+6. **GRAB** onto the grindstone, mash **USE**, then **GRAB** the finished weapon to the counter.
+
+| | Move | Grab | Use |
+| --- | --- | --- | --- |
+| P1 | WASD | E | F or Space |
+| P2 | Arrows | . | / or Shift |
+| Gamepads | Left stick / d-pad | A | X or B |
+
+P3 and P4 use gamepads 1 and 2. With 1-2 players, gamepads 1 and 2 also drive P1 and P2.
+Rush Hour needs a keyboard or gamepad; solo works with touch.
+
+## Files
+
+- `scripts/bk.gd`: all tuning and data (steps, weapons, metals, customers, days, upgrades, Rush).
+- `scripts/main.gd`: menus, shop days, the order flow. `scripts/hud.gd`: everything on screen.
+- `scripts/workshop.gd`: the 3D forge, stations, camera shots. `scripts/actor.gd`: KayKit characters.
+- `scripts/games/*.gd`: one file per step. `scripts/coop/*.gd`: Rush Hour.
+- `assets/models/`: KayKit (CC0) plus the Storm Forge Blender kits (bellows, furnace, trip hammer, dunk tank).
+
+## Tests
+
+```
+# screenshots every 1.6 s of a whole order, steps auto-finishing
+xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/capture.gd -- /tmp/out 1.6 30 --test-order axe 3 --autoplay
+# every minigame with random input
+xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/fuzz.gd
+# one sword through the whole Rush Hour pipeline
+godot --headless --path . --script res://tests/rush_test.gd
+```
+
+## Web build
+
+```
+godot --headless --path . --export-release Web web/index.html
+```
