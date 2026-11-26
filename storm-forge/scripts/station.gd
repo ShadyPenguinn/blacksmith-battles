@@ -41,7 +41,22 @@ var handle: MeshInstance3D      # rope 0's handle (rope 1's is a copy of it)
 var handles = []                # one handle per rope
 var handle_pos = [Vector3.ZERO, Vector3.ZERO]   # each loose rope end swings under the pulley
 var handle_vel = [Vector3.ZERO, Vector3.ZERO]
-const ROPE_Z := [-0.3, 0.3]     # the two ropes hang side by side off the pulley
+var rope_count = 2              # ropes on the hammer (the four-rope game has 4)
+var game = ""                   # which minigame this station plays this room (SF.GAME_ROOMS)
+var full_side = -1              # swap bellows: the one that's full (-1 left, +1 right)
+var bellows_y = []              # swap bellows: each one's height when full
+var flat_said = 0.0
+var swap_tween: Tween = null
+var levers = []                 # lever pump: [pivot, base] per lever, left then right
+var lever_up = [false, false]
+var meter: Node3D               # hammer meter: the bar over the anvil
+var meter_mark: Node3D
+var meter_text: Label3D
+var spots = []                  # two-smith anvil: the ring on each side
+var duo_hits = [-10.0, -10.0]   # two-smith anvil: when each spot last hit, and how well
+var duo_grade = [0, 0]
+var cool = 0                    # bucket relay: splashes the blade on the block has had
+var water: MeshInstance3D       # pool: the water surface
 var cold_said = 0.0
 var weak_said = 0.0
 var need_flag: MeshInstance3D
@@ -145,9 +160,19 @@ func _physics_process(delta: float) -> void:
 		"furnace":
 			_furnace_tick(delta)
 		"anvil":
-			_trip_tick(delta)
+			if game in ["meter", "duo"]:
+				_meter_tick(delta)
+			else:
+				_trip_tick(delta)
 		"trough":
-			_dunk_tick(delta)
+			if game == "bucket":
+				_cool_tick(delta)
+			else:
+				_dunk_tick(delta)
+		"pool":
+			label.text = "Water pool\nfill a bucket here"
+			if water:
+				water.position.y = size.y * 0.5 + 0.02 + sin(beat_t * 2.0) * 0.015
 		"door":
 			weak_x = sin(beat_t * 0.6) * (size.x * 0.5 - 1.0)
 			weak.position.x = weak_x
@@ -405,6 +430,30 @@ func add_bellows() -> void:
 		if model:
 			_bellows_collision(b, model)
 		bellows.append(b)
+		bellows_y.append(b.position.y)
+	if game == "swap":
+		_swap_pose(false)
+
+## Swap bellows: the full one stands tall, the flat one sinks into the floor (its top too,
+## so you can't land on air). anim: slide there instead of jumping.
+func _swap_pose(anim: bool) -> void:
+	for i in bellows.size():
+		var side = -1 if i == 0 else 1
+		var y: float = bellows_y[i] - (0.0 if side == full_side else SF.SWAP["sink"])
+		var sq = bellows[i].get_node("Squish")
+		var squash = Vector3.ONE if side == full_side else Vector3(1.06, 0.7, 1.06)
+		if anim:
+			if i == 0 and swap_tween and swap_tween.is_valid():
+				swap_tween.kill()   # a quick second stomp: start from where it is now
+			if i == 0:
+				swap_tween = create_tween().set_parallel()
+			var tw = swap_tween
+			var t = 0.12 if side != full_side else 0.45
+			tw.tween_property(bellows[i], "position:y", y, t).set_trans(Tween.TRANS_BACK if side == full_side else Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_property(sq, "scale", squash, t).set_trans(Tween.TRANS_ELASTIC if side == full_side else Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		else:
+			bellows[i].position.y = y
+			sq.scale = squash
 
 ## Collision that follows the model: one convex hull per part, in the open pose (the lid is a
 ## slope you land on). Built once; the lid's slam is only visual.
@@ -435,6 +484,14 @@ func stomp(side: int, power: float) -> void:
 	var g: Dictionary = SF.BELLOWS
 	var now = Time.get_ticks_msec() / 1000.0
 	var gain = g["heat"] * power
+	if game == "swap":
+		if side != full_side:
+			if now - flat_said > 2.0:
+				flat_said = now
+				main.toast("That bellows is flat! Stomp the full one.")
+			return
+		gain = SF.SWAP["heat"] * power
+		last_side = 0   # no one-footed penalty: the flat one can't be stomped anyway
 	if side == last_side and now - last_stomp < g["same_side_window"]:
 		gain *= g["same_side_mult"]   # one-footed: the bellows hasn't refilled yet
 	last_side = side
@@ -450,11 +507,17 @@ func stomp(side: int, power: float) -> void:
 		burp()
 
 ## The bellows squashes flat and springs back, and a puff of air hits the fire.
+## Swap bellows: the stomped one stays flat and the other one fills back up.
 func squish(side: int) -> void:
 	var b = bellows[0] if side < 0 else bellows[1]
+	if game == "swap":
+		full_side = -side
+		_swap_pose(true)
 	var sq = b.get_node("Squish")
 	var anim = _bellows_anim(b)
-	if anim and anim.has_animation("Stomp"):
+	if game == "swap":
+		pass   # the pose tween squashes it
+	elif anim and anim.has_animation("Stomp"):
 		anim.stop()
 		anim.play("Stomp")   # the lid slams shut and springs back open
 		var tw = create_tween()   # plus a little squash of the whole thing
@@ -564,7 +627,13 @@ func _head_rest_y() -> float:
 
 ## A tall frame over the anvil with a giant hammer head on a rope. The rope runs over a
 ## pulley to a handle at the side: grab it and walk away to haul the head up.
-func add_trip_hammer() -> void:
+func add_trip_hammer(count: int = 2) -> void:
+	rope_count = count
+	handle_pos = []
+	handle_vel = []
+	for i in count:
+		handle_pos.append(Vector3.ZERO)
+		handle_vel.append(Vector3.ZERO)
 	var gy = -size.y * 0.5
 	var wood = Color(0.45, 0.3, 0.18)
 	var tall = _top_y() - gy
@@ -615,10 +684,12 @@ func add_trip_hammer() -> void:
 	handle = Build.box(Vector3(0.45, 0.12, 0.12), Color(0.85, 0.2, 0.15))
 	add_child(handle)
 	_dress_trip_hammer()
-	# Two ropes, so two smiths can haul at once. Rope 1 is dressed the same as rope 0.
-	var handle2 = handle.duplicate()
-	add_child(handle2)
-	handles = [handle, handle2]
+	# A rope per smith, so they can haul at once. The others are dressed the same as rope 0.
+	handles = [handle]
+	for i in range(1, count):
+		var h2 = handle.duplicate()
+		add_child(h2)
+		handles.append(h2)
 	_trip_visuals()
 
 ## Swap the rig's placeholder boxes for the KayKit-style kit (if it's there). Same nodes,
@@ -659,13 +730,19 @@ func _dress_trip_hammer() -> void:
 
 ## Where rope i comes down from the pulley, at ground level: pull away from here.
 func rope_anchor(i: int = 0) -> Vector3:
-	return to_global(Vector3(PULLEY_X, -size.y * 0.5, POST_Z + ROPE_Z[i]))
+	return to_global(Vector3(PULLEY_X, -size.y * 0.5, POST_Z + rope_z(i)))
 
 func handle_rest(i: int = 0) -> Vector3:
-	return to_global(Vector3(PULLEY_X, -size.y * 0.5 + 1.0, POST_Z + ROPE_Z[i]))
+	return to_global(Vector3(PULLEY_X, -size.y * 0.5 + 1.0, POST_Z + rope_z(i)))
 
 func _pulley_point(i: int) -> Vector3:
-	return to_global(Vector3(PULLEY_X, _top_y(), POST_Z + ROPE_Z[i] * 0.3))
+	return to_global(Vector3(PULLEY_X, _top_y(), POST_Z + rope_z(i) * 0.3))
+
+## The ropes hang side by side off the pulley, 0.4 m apart (2 ropes: -0.3 and +0.3).
+func rope_z(i: int) -> float:
+	if rope_count <= 2:
+		return -0.3 + 0.6 * i
+	return (i - (rope_count - 1) * 0.5) * 0.4
 
 ## Who's holding rope i, or null.
 func holder(i: int) -> Node3D:
@@ -680,7 +757,7 @@ func free_rope_for(p: Node3D) -> int:
 		return -1
 	var best = -1
 	var bd = SF.TRIP["grab_reach"]
-	for i in 2:
+	for i in rope_count:
 		if holder(i) != null:
 			continue
 		var at: Vector3 = handle_pos[i] if handle_pos[i] != Vector3.ZERO else handle_rest(i)
@@ -704,6 +781,9 @@ func _trip_tick(delta: float) -> void:
 		var want = 0.0
 		for p in pullers():
 			want = maxf(want, p.rope_pull())
+		if game == "ropes":
+			# Each rope only lifts so high: more smiths on more ropes, more height.
+			want = minf(want, SF.ROPES["per_rope"] * pullers().size())
 		if want >= ham_h:
 			ham_h = want
 			ham_v = 0.0
@@ -732,7 +812,9 @@ func _trip_tick(delta: float) -> void:
 	elif slot.kind == "ingot" and slot.hot > 0.0:
 		var need = _shape_needed()
 		var hint = "pull the rope back!"
-		if min_drop(slot.tier) > 0.0:
+		if game == "ropes":
+			hint = "each rope lifts %.1f m: more smiths on ropes, more height!" % SF.ROPES["per_rope"]
+		elif min_drop(slot.tier) > 0.0:
 			hint = "drop it from above the red flag!"
 		label.text = "%s  %d%%\n%s" % [slot.display_name(), int(100.0 * minf(shape / need, 1.0)), hint]
 	else:
@@ -748,8 +830,8 @@ func _trip_visuals(delta: float = 0.0) -> void:
 	rope_up.position = Vector3(0, (head_top + _top_y()) * 0.5, 0)
 	rope_up.scale.y = maxf(_top_y() - head_top, 0.05)
 	for i in ropes.size():
-		ropes[i].visible = i < 2
-	for i in 2:
+		ropes[i].visible = i < rope_count
+	for i in rope_count:
 		var pulley = _pulley_point(i)
 		var h: MeshInstance3D = handles[i] if i < handles.size() else handle
 		var who = holder(i)
@@ -836,20 +918,7 @@ func slam(power: float) -> void:
 	shape += past * g["shape_per_meter"]
 	if shape < _shape_needed():
 		return
-	# Shaped: the blade springs off the anvil and flies onto the dunk tank seat.
-	var t: int = slot.tier
-	var pos = slot.global_position
-	main.despawn(slot)
-	slot = null
-	shape = 0.0
-	var blade = main.spawn_item("blank", pos + Vector3(0, 0.4, 0), {"tier": t})
-	var tank = main.trough
-	if tank and not tank.dead and tank.slot == null:
-		tank.catch_flying(blade, pos + Vector3(0, 0.4, 0))
-		main.toast(SF.material_name(t) + " blade shaped! It flew onto the dunk tank.")
-	else:
-		blade.apply_central_impulse(Vector3(1.0, 4.0, 1.5) * blade.mass)
-		main.toast(SF.material_name(t) + " blade shaped! The dunk seat is taken, so it's on the floor.")
+	_blade_done()
 
 func slam_fx(power: float) -> void:
 	var top = global_position + Vector3(0, size.y * 0.5 + 0.2, 0)
@@ -1115,3 +1184,304 @@ func ding_fx(dunk: bool) -> void:
 	tw3.tween_callback(func():
 		var bottom = to_global(Vector3(0, -size.y * 0.5 + 0.2, size.z * 0.5 + 1.0))
 		Fx.burst(main, bottom, Color(0.45, 0.7, 1.0, 0.9), 20, 1.0, 3.0, -9.0, 0.7, Vector3(0, 0.6, 1), 40.0))
+
+# --- Lever pump ---
+
+## Lever pump: a lever on each side of the furnace where the bellows would be.
+func add_levers() -> void:
+	for side in [-1, 1]:
+		var base = StaticBody3D.new()
+		base.collision_layer = 1
+		var box = Build.box(Vector3(0.6, 0.5, 0.6), Color(0.35, 0.33, 0.32))
+		box.position.y = 0.25
+		base.add_child(box)
+		var cs = Build.box_shape(Vector3(0.6, 0.5, 0.6))
+		cs.position.y = 0.25
+		base.add_child(cs)
+		var pipe = Build.box(Vector3(0.9, 0.14, 0.14), Color(0.55, 0.4, 0.25))
+		pipe.position = Vector3(-side * 0.6, 0.3, 0)
+		base.add_child(pipe)
+		var pivot = Node3D.new()
+		pivot.position = Vector3(0, 0.5, 0)
+		base.add_child(pivot)
+		var arm = Build.box(Vector3(0.12, 1.3, 0.12), Color(0.5, 0.34, 0.2))
+		arm.position.y = 0.65
+		pivot.add_child(arm)
+		var knob = Build.box(Vector3(0.24, 0.24, 0.24), Color(0.85, 0.2, 0.15))
+		knob.position.y = 1.3
+		pivot.add_child(knob)
+		add_child(base)
+		base.position = Vector3(side * (size.x * 0.5 + 1.0), -size.y * 0.5, 0.4)
+		levers.append([pivot, base])
+	lever_up = [false, false]
+	_lever_pose(0, false)
+	_lever_pose(1, false)
+
+## Which lever p can reach, or -1.
+func lever_near(p: Node3D) -> int:
+	if dead or game != "lever":
+		return -1
+	var best = -1
+	var bd: float = SF.LEVER["reach"]
+	for i in levers.size():
+		var at: Vector3 = levers[i][1].global_position
+		var d = Vector2(p.global_position.x - at.x, p.global_position.z - at.z).length()
+		if d <= bd:
+			bd = d
+			best = i
+	return best
+
+## Host: work lever i. up = pull it up (use), else push it down (grab). Returns what happened.
+func lever_stroke(i: int, up: bool) -> String:
+	if lever_up[i] == up:
+		return "Push it down! (right click / E)" if up else "Pull it up! (left click / F)"
+	lever_up[i] = up
+	heat = minf(110.0, heat + SF.LEVER["heat"] * (1.3 ** main.mod("hot_coals")) * (0.7 ** main.mod("wet_coal")))
+	_lever_pose(i, true)
+	main.net_event("lever", [i, up])
+	return "Whoosh!"
+
+func _lever_pose(i: int, anim: bool) -> void:
+	var side = -1 if i == 0 else 1
+	var rot = deg_to_rad(-side * (10.0 if lever_up[i] else 70.0))
+	var pivot: Node3D = levers[i][0]
+	if anim:
+		var tw = create_tween()
+		tw.tween_property(pivot, "rotation:z", rot, 0.08)
+		var noz = levers[i][1].global_position + Vector3(-side * 1.0, 0.3, 0)
+		Fx.burst(main, noz, Color(0.95, 0.95, 0.9, 0.7), 5, 0.9, 3.0, 0.5, 0.3, Vector3(-side, 0.2, 0), 25.0)
+		if mouth:
+			Fx.burst(main, global_position + Vector3(0, -0.45, 1.15), Color(1.0, 0.55, 0.15), 5, 0.8, 2.5, 3.0, 0.35, Vector3(0, 1, 0.6), 40.0)
+	else:
+		pivot.rotation.z = rot
+
+## Client: show a lever the host moved.
+func lever_set(i: int, up: bool) -> void:
+	if i < levers.size() and lever_up[i] != up:
+		lever_up[i] = up
+		_lever_pose(i, true)
+
+# --- Hammer meter and the two-smith anvil ---
+
+## A bar over the anvil with a marker sweeping across it: swing your hammer when it's in
+## the green middle. The two-smith anvil also gets a ring on each side to stand in.
+func add_meter() -> void:
+	meter = Node3D.new()
+	add_child(meter)
+	meter.position = Vector3(0, size.y * 0.5 + 1.7, 0)
+	var w = 2.4 if game == "duo" else 1.8
+	meter.set_meta("w", w)
+	var bg = Build.box(Vector3(w + 0.1, 0.26, 0.05), Color(0.1, 0.1, 0.12))
+	meter.add_child(bg)
+	var good = Build.box(Vector3(w * SF.METER["good"], 0.2, 0.06), Color(1.0, 0.8, 0.2), 0.4)
+	meter.add_child(good)
+	var perfect = Build.box(Vector3(w * SF.METER["perfect"], 0.22, 0.07), Color(0.3, 1.0, 0.4), 0.6)
+	meter.add_child(perfect)
+	meter_mark = Build.box(Vector3(0.07, 0.4, 0.09), Color(1, 1, 1), 1.0)
+	meter.add_child(meter_mark)
+	meter_text = Build.label("", 40)
+	meter_text.position = Vector3(0, 0.45, 0)
+	meter.add_child(meter_text)
+	meter.visible = false
+	if game == "duo":
+		for side in [-1, 1]:
+			var ring = MeshInstance3D.new()
+			var tm = TorusMesh.new()
+			tm.inner_radius = SF.DUO["spot_radius"] - 0.1
+			tm.outer_radius = SF.DUO["spot_radius"]
+			ring.mesh = tm
+			ring.material_override = Build.mat(Color(0.6, 0.6, 0.6), 0.5)
+			add_child(ring)
+			ring.position = Vector3(side * SF.DUO["spot_x"], -size.y * 0.5 + 0.05, 0.9)
+			spots.append(ring)
+
+## Where the marker is right now: -1 (left end) to 1 (right end). Everyone sees the same.
+func meter_pos() -> float:
+	var t = slot.tier if slot and is_instance_valid(slot) else 0
+	return sin(beat_t * (SF.METER["speed"] + SF.METER["speed_per_tier"] * t))
+
+## 2 Perfect, 1 Good, 0 miss, for a hit right now.
+func meter_grade() -> int:
+	var m = absf(meter_pos())
+	if m <= SF.METER["perfect"]:
+		return 2
+	if m <= SF.METER["good"]:
+		return 1
+	return 0
+
+## Two-smith anvil: which spot p stands in (0 left, 1 right), or -1.
+func duo_spot(p: Node3D) -> int:
+	for i in spots.size():
+		var at: Vector3 = spots[i].global_position
+		if Vector2(p.global_position.x - at.x, p.global_position.z - at.z).length() <= SF.DUO["spot_radius"] + 0.15:
+			return i
+	return -1
+
+func _hot_ingot() -> bool:
+	return slot != null and is_instance_valid(slot) and slot.kind == "ingot" and slot.hot > 0.0
+
+## Host: p's hammer lands on the anvil. Returns what to tell them.
+func hammer_hit(p: Node3D) -> String:
+	if slot == null:
+		return "Bring a hot ingot first"
+	if not _hot_ingot():
+		return "Too cold: reheat it in the furnace"
+	var g = meter_grade()
+	if game == "duo":
+		var s = duo_spot(p)
+		if s < 0:
+			return "Stand in a ring by the big anvil"
+		var now = Time.get_ticks_msec() / 1000.0
+		duo_hits[s] = now
+		duo_grade[s] = g
+		meter_fx(g)
+		main.net_event("meter", g)
+		if g == 0:
+			slot.hot = maxf(0.0, slot.hot - SF.METER["miss_cool"])
+			return "Miss! Hit it in the middle"
+		var o = 1 - s
+		if now - duo_hits[o] <= SF.DUO["window"] and duo_grade[o] > 0:
+			duo_hits = [-10.0, -10.0]
+			var k = 1.5 if g == 2 and duo_grade[o] == 2 else 1.0
+			return _shape_by(SF.DUO["shape"] * k, "BOOM! Together!")
+		return "Now your partner! Hit together"
+	meter_fx(g)
+	main.net_event("meter", g)
+	if g == 0:
+		slot.hot = maxf(0.0, slot.hot - SF.METER["miss_cool"])
+		return "Miss! It cooled a little"
+	return _shape_by(SF.METER["perfect_shape"] if g == 2 else SF.METER["good_shape"], "PERFECT!" if g == 2 else "Good!")
+
+func _shape_by(amount: float, said: String) -> String:
+	shape += amount
+	if shape >= _shape_needed():
+		_blade_done()
+		return said + " Blade shaped!"
+	return said
+
+## Every screen: the anvil rings with sparks, bigger for a better hit.
+func meter_fx(grade: int) -> void:
+	var top = global_position + Vector3(0, size.y * 0.5 + 0.2, 0)
+	if grade == 0:
+		Fx.dust(main, top, 5, 0.6)
+	else:
+		Fx.burst(main, top, Color(1.0, 0.75, 0.3), 10 + 12 * grade, 0.9 + 0.3 * grade, 5.0 + 2.0 * grade, -10.0, 0.4, Vector3.UP, 80.0)
+	jiggle()
+	if meter_text:
+		meter_text.text = ["Miss", "Good!", "PERFECT!"][grade]
+		meter_text.modulate = [Color(1, 0.4, 0.3), Color(1, 0.85, 0.3), Color(0.4, 1, 0.5)][grade]
+		meter_text.set_meta("t", 0.8)
+
+func _meter_tick(delta: float) -> void:
+	_follow_slot(Vector3(0, size.y * 0.5 + 0.15, 0))
+	var hot = _hot_ingot()
+	meter.visible = hot
+	var w: float = meter.get_meta("w")
+	meter_mark.position.x = meter_pos() * w * 0.5
+	var t: float = meter_text.get_meta("t", 0.0)
+	if t > 0.0:
+		meter_text.set_meta("t", t - delta)
+	else:
+		meter_text.text = ""
+	if game == "duo":
+		var now = Time.get_ticks_msec() / 1000.0
+		for i in spots.size():
+			var c = Color(0.6, 0.6, 0.6)
+			for p in main.players:
+				if duo_spot(p) == i and p.held and p.held.kind == "tool" and p.held.tool == "hammer":
+					c = Color(0.3, 0.9, 1.0)
+			if now - duo_hits[i] <= SF.DUO["window"] and duo_grade[i] > 0:
+				c = Color(1.0, 0.85, 0.2)   # this side hit: the other side swing NOW
+			(spots[i].material_override as StandardMaterial3D).albedo_color = c
+			(spots[i].material_override as StandardMaterial3D).emission = c
+	if slot == null:
+		label.text = "Big anvil: two smiths\nbring a hot ingot" if game == "duo" else "Anvil\nbring a hot ingot"
+	elif hot:
+		var need = _shape_needed()
+		var hint = "both rings: hammers out, hit together in the middle!" if game == "duo" else "hammer out: hit when it's in the middle!"
+		label.text = "%s  %d%%\n%s" % [slot.display_name(), int(100.0 * minf(shape / need, 1.0)), hint]
+	else:
+		label.text = slot.display_name() + "\ntoo cold: reheat in the furnace"
+
+## Shaped: the blade springs off the anvil to wherever this room cools blades.
+func _blade_done() -> void:
+	var t: int = slot.tier
+	var pos = slot.global_position
+	main.despawn(slot)
+	slot = null
+	shape = 0.0
+	var blade = main.spawn_item("blank", pos + Vector3(0, 0.4, 0), {"tier": t})
+	var tank = main.trough
+	if tank and not tank.dead and tank.slot == null:
+		tank.catch_flying(blade, pos + Vector3(0, 0.4, 0))
+		var where = "the cooling block" if tank.game == "bucket" else "the dunk tank"
+		main.toast(SF.material_name(t) + " blade shaped! It flew onto " + where + ".")
+	else:
+		blade.apply_central_impulse(Vector3(1.0, 4.0, 1.5) * blade.mass)
+		main.toast(SF.material_name(t) + " blade shaped! The cooling spot is taken, so it's on the floor.")
+
+# --- Bucket relay ---
+
+## The cooling block: a stone block the hot blade lands on. Splash it with buckets of water.
+func add_cool_block() -> void:
+	seat = Node3D.new()
+	add_child(seat)
+	seat.position = Vector3(0, size.y * 0.5, -0.37)
+	var steam = Build.box(Vector3(size.x * 0.9, 0.04, size.z * 0.9), Color(0.25, 0.22, 0.2))
+	steam.position.y = size.y * 0.5 + 0.02
+	add_child(steam)
+
+## The water pool for the bucket relay.
+func add_pool() -> void:
+	water = Build.box(Vector3(size.x * 0.85, 0.06, size.z * 0.85), Color(0.35, 0.65, 1.0), 0.6)
+	water.position.y = size.y * 0.5 + 0.02
+	add_child(water)
+
+## Host: splash the blade with a full bucket. Returns what happened.
+func splash(b: RigidBody3D) -> String:
+	if slot == null or fly_t >= 0.0:
+		return "No blade on the block yet"
+	b.bucket_full = false
+	cool += 1
+	splash_fx()
+	main.net_event("splash", cool)
+	if cool >= SF.BUCKET["splashes"]:
+		var at = global_position + Vector3(0, size.y * 0.5 + 0.3, 0.8)
+		var t: int = slot.tier
+		main.despawn(slot)
+		slot = null
+		cool = 0
+		var w = main.spawn_item("weapon", at, {"tier": t})
+		w.spare_handle = main.mod("spare_handle") > 0
+		w.apply_central_impulse(Vector3(0, 3.0, 1.5) * w.mass)
+		main.toast(SF.material_name(t) + " sword cooled and finished!")
+		return "Hiss! Sword done"
+	return "Hiss! %d more bucket%s" % [SF.BUCKET["splashes"] - cool, "" if SF.BUCKET["splashes"] - cool == 1 else "s"]
+
+func splash_fx() -> void:
+	var top = global_position + Vector3(0, size.y * 0.5 + 0.2, 0)
+	Fx.burst(main, top, Color(0.45, 0.7, 1.0, 0.9), 20, 1.2, 4.0, -9.0, 0.5, Vector3.UP, 60.0)
+	Fx.burst(main, top + Vector3(0, 0.3, 0), Color(0.92, 0.92, 0.95, 0.7), 16, 2.0, 1.6, 1.5, 1.2, Vector3.UP, 30.0)
+	jiggle()
+
+func _cool_tick(delta: float) -> void:
+	if slot == null:
+		cool = 0
+		label.text = "Cooling block\nwaiting for a blade"
+	else:
+		label.text = "%s  %d/%d\nsplash it with buckets from the pool!" % [slot.display_name(), cool, SF.BUCKET["splashes"]]
+	if main.is_client() or slot == null or not is_instance_valid(slot):
+		return
+	if fly_t >= 0.0:
+		fly_t += delta
+		var k = clampf(fly_t / SF.DUNK["fling_time"], 0.0, 1.0)
+		var to = seat_point()
+		slot.global_position = fly_from.lerp(to, k) + Vector3.UP * (4.0 * k * (1.0 - k) * 3.0)
+		slot.global_rotation = Vector3(fly_t * 14.0, PI * 0.5, 0)
+		if k >= 1.0:
+			fly_t = -1.0
+			Fx.dust(main, to, 6, 0.6)
+			jiggle()
+	else:
+		slot.global_position = seat_point()
+		slot.global_rotation = Vector3(0, PI * 0.5, 0)

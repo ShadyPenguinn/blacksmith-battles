@@ -135,6 +135,68 @@ const DUNK := {
 	"aim_range": 10.0,        # throws this close to the tank aim at the target's height
 	"fling_time": 0.9,        # seconds the sword flies from the anvil to the seat
 }
+## Minigames. Every room picks one game per station: the furnace (heat it), the anvil
+## (shape the ingot) and the cooling spot (quench the blade). Rooms 1-3 are fixed for
+## playtesting; after that each station picks at random from its pool.
+const GAME_ROOMS := [
+	{"furnace": "swap", "anvil": "meter", "quench": "bucket"},
+	{"furnace": "lever", "anvil": "ropes", "quench": "dunk"},
+	{"furnace": "stomp", "anvil": "duo", "quench": "bucket"},
+]
+const GAME_POOL := {
+	"furnace": ["stomp", "swap", "lever"],
+	"anvil": ["rope", "meter", "duo", "ropes"],
+	"quench": ["dunk", "bucket"],
+}
+const GAME_NAMES := {
+	"stomp": "Stomp bellows", "swap": "Swap bellows", "lever": "Lever pump",
+	"rope": "Rope hammer", "ropes": "Four-rope hammer", "meter": "Hammer meter", "duo": "Two-smith anvil",
+	"dunk": "Dunk tank", "bucket": "Bucket relay",
+}
+## Swap bellows: stomping the full one blows it flat and fills the other one. A flat one
+## does nothing, so you alternate: two smiths take turns, or one runs back and forth.
+const SWAP := {
+	"heat": 12.0,             # heat per stomp on the full bellows
+	"sink": 0.3,              # a flat bellows sinks this far (meters)
+}
+## Lever pump: by a lever, use (left click / F) pulls it up and grab (right click / E)
+## pushes it down. Each stroke blows air in; the same stroke twice does nothing.
+const LEVER := {
+	"heat": 4.0,              # heat per stroke
+	"reach": 1.6,             # how close you need to be to work it
+}
+## Hammer meter: walk up with your hammer out and swing when the marker is in the middle.
+const METER := {
+	"speed": 2.4,             # how fast the marker sweeps (radians per second)...
+	"speed_per_tier": 0.5,    # ...and this much faster for each harder metal
+	"perfect": 0.12,          # the middle this wide (share of half the bar) is Perfect...
+	"good": 0.32,             # ...and this wide is Good
+	"perfect_shape": 1.0,     # shaping per hit (a sword takes TRIP["shape_needed"])
+	"good_shape": 0.5,
+	"miss_cool": 3.0,         # a miss knocks this many seconds off the ingot's heat
+}
+## Two-smith anvil: a big anvil with a spot on each side. A hit only counts when the
+## smiths on both spots land Good or better within the window of each other.
+const DUO := {
+	"size": Vector3(2.4, 0.9, 0.9),
+	"spot_x": 1.75,           # the two spots stand this far left and right of the middle
+	"spot_radius": 0.75,
+	"window": 0.45,           # seconds between the two hits
+	"shape": 1.0,             # shaping for a good pair (Perfect + Perfect is 1.5x)
+}
+## Four-rope hammer: each rope can only lift the head so high. More smiths on more ropes
+## lift it higher, up to all four.
+const ROPES := {
+	"count": 4,
+	"per_rope": 0.7,          # meters of lift each rope adds
+}
+## Bucket relay: the blade lands on a stone block far from a pool. Fill buckets at the
+## pool (use) and splash the blade (use) until it's cool.
+const BUCKET := {
+	"splashes": 3,            # buckets of water to cool a blade
+	"pool_size": Vector3(2.8, 0.5, 2.8),
+	"extra_buckets": 2,       # buckets waiting by the pool in a bucket room
+}
 const WEAPON_DURABILITY := 10
 const WEAPON_DAMAGE := 10.0
 const TIER_BONUS := 0.5           # extra damage per tier above the door's armor

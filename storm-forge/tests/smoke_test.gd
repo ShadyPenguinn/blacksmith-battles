@@ -29,6 +29,7 @@ func items_of(kind: String) -> Array:
 func _run() -> void:
 	main = load("res://main.tscn").instantiate()
 	main.start_mode = "offline"
+	main.game_override = {"furnace": "stomp", "anvil": "rope", "quench": "dunk"}   # the classic games (tests/minigame_test.gd covers the rest)
 	root.add_child(main)
 	await frames(5)
 	var miner = main.players[0]

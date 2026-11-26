@@ -37,6 +37,7 @@ func _run() -> void:
 	who = args[0] if args.size() > 0 else "host"
 	main = load("res://main.tscn").instantiate()
 	main.start_mode = "host" if who == "host" else "client"
+	main.game_override = {"furnace": "stomp", "anvil": "rope", "quench": "dunk"}   # the classic games, so the item counts below hold
 	main.join_ip = "127.0.0.1"
 	root.add_child(main)
 	if who == "host":
