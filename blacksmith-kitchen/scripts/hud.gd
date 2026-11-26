@@ -163,7 +163,9 @@ func set_steps(steps: Array, current: int, scores: Array) -> void:
 		else:
 			sb.bg_color = Color(0.3, 0.25, 0.22, 0.8)
 		p.add_theme_stylebox_override("panel", sb)
-		var l = label(BK.STEPS[steps[i]]["title"], 16, INK if (i < scores.size() or i == current) else Color(0.85, 0.8, 0.75))
+		# Long recipes: only the current step shows its name, the rest show their number.
+		var name = steps[i] if (i == current or steps.size() <= 7) else str(i + 1)
+		var l = label(name, 16, INK if (i < scores.size() or i == current) else Color(0.85, 0.8, 0.75))
 		p.add_child(l)
 		steps_box.add_child(p)
 

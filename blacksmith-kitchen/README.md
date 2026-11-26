@@ -41,7 +41,20 @@ Upgrades** (bellows, longer tongs, a balanced hammer, a whetstone, and a cat).
 Metals: Copper, Bronze, Iron, Steel, Moonsilver, Starmetal. Harder metals tighten heat bands,
 speed up meters, and need more hammer ropes.
 
-### The 12 steps
+### Two routes, like the real thing
+
+The metal decides how the weapon is made (see `steps_for()` in `scripts/bk.gd`):
+
+- **Cast** (Copper, Bronze, Moonsilver): these melt in a crucible, so you crush the ore, melt it,
+  **pour the mold** and crack it open, then finish.
+- **Forged** (Iron, Steel, Starmetal): iron never melts in an old furnace. It cooks into a spongy
+  **bloom** that you pull out, squeeze the slag out of with the big hammer, **fold** (Steel: 2
+  folds, Starmetal: 3), shape, quench and **temper**, then finish.
+
+Every order starts by crushing the ore (and digging it first for some weapons). Finishing steps
+(sharpen, wrap, fit, polish, etch) come from the weapon.
+
+### The steps
 
 | Step | Gesture | Station |
 | --- | --- | --- |
@@ -57,11 +70,20 @@ speed up meters, and need more hammer ropes.
 | Polish | hold and scrub off grime | workbench |
 | Etch a Rune | trace through numbered dots | workbench |
 | Fit the Handle | drop the swinging handle into the socket, then tap it home | workbench |
+| Crush the Ore | click big chunks to split them into gravel for the roasting pan; hitting gravel turns it to dust | crushing stone by the rock |
+| Pour the Mold | hold to tip the crucible; pour steady (too far splashes), fill to the line before the metal cools, then click to crack the mold | sand mold on the workbench |
+| Fold and Weld | drag the bar's right end over onto its left end, then hammer it shut before it cools | anvil |
+| Temper | hold to warm the blade on coals; the colour runs straw, bronze, purple, blue; let go just before the target, it keeps creeping | anvil |
+
+On the forged route the bellows and lever step is called Fire the Bloomery, Tong Carry is Pull
+the Bloom, Rope Drop is Squeeze the Bloom and Hammer Time is Shape the Blade. On the cast route
+the bellows and lever melt the metal.
 
 ### Recipes
 
 Dagger, Arming Sword, Spear, Hand Axe, War Hammer, Rune Staff, Round Shield, Greatsword,
-Halberd. Each has 5-9 steps; the lists are in `WEAPONS` in `scripts/bk.gd`.
+Halberd. Each takes 4-7 steps cast and 8-12 forged; see `WEAPONS` and `steps_for()` in
+`scripts/bk.gd`.
 
 ## Co-op: Rush Hour
 
@@ -104,6 +126,8 @@ Rush Hour needs a keyboard or gamepad; solo works with touch.
 xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/capture.gd -- /tmp/out 1.6 30 --test-order axe 3 --autoplay
 # every minigame with random input
 xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/fuzz.gd
+# crush, temper, fold and pour played like a person would, with scores (and screenshots)
+xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/play_new.gd -- /tmp/shots
 # one sword through the whole Rush Hour pipeline
 godot --headless --path . --script res://tests/rush_test.gd
 ```

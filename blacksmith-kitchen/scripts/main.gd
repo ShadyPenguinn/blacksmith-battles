@@ -14,6 +14,10 @@ const GAMES := {
 	"polish": preload("res://scripts/games/polish.gd"),
 	"etch": preload("res://scripts/games/etch.gd"),
 	"fit": preload("res://scripts/games/fit.gd"),
+	"crush": preload("res://scripts/games/crush.gd"),
+	"pour": preload("res://scripts/games/pour.gd"),
+	"fold": preload("res://scripts/games/fold.gd"),
+	"temper": preload("res://scripts/games/temper.gd"),
 }
 
 var ws: Workshop
@@ -131,7 +135,7 @@ func recipe_menu() -> void:
 		if not m.is_empty():
 			txt += "\n" + m["name"]
 		else:
-			txt += "\n" + ("%d steps" % BK.WEAPONS[w]["steps"].size() if w in unlocked else "")
+			txt += "\n" + ("%d-%d steps" % [BK.steps_for(w, 0).size(), BK.steps_for(w, 5).size()] if w in unlocked else "")
 		var b = hud.button(grid, txt, _pick_metal.bind(w), w in unlocked)
 		b.custom_minimum_size = Vector2(260, 84)
 		b.add_theme_font_size_override("font_size", 22)
@@ -141,13 +145,15 @@ func recipe_menu() -> void:
 
 func _pick_metal(w: String) -> void:
 	var v = hud.panel(BK.WEAPONS[w]["name"], 620)
-	var steps = []
-	for s in BK.WEAPONS[w]["steps"]:
-		steps.append(BK.STEPS[s]["title"])
-	var l = hud.label(" > ".join(steps), 20)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(l)
+	# One line per route: cast metals are poured, forged metals are hammered.
+	for r in [["cast", 0, "Cast (Copper, Bronze, Moonsilver)"], ["forge", 3, "Forged (Iron, Steel, Starmetal)"]]:
+		var steps = []
+		for s in BK.steps_for(w, r[1]):
+			steps.append(BK.step_info(s, r[1])["title"])
+		var l = hud.label(r[2] + ":  " + " > ".join(steps), 18)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
 	for tier in Save.max_tier() + 1:
 		var best = Save.best_score(w, tier)
 		var tag = "" if best < 0.0 else "   (" + BK.medal(best)["name"] + ")"
@@ -286,15 +292,16 @@ func run_order(order: Dictionary) -> float:
 		hud.hush()
 	if my_run != run_id:
 		return 0.0
-	var steps: Array = BK.WEAPONS[order["weapon"]]["steps"]
+	var steps: Array = BK.steps_for(order["weapon"], order["tier"])
+	var titles = steps.map(func(st): return BK.step_info(st, order["tier"])["title"])
 	var scores = []
 	for i in steps.size():
-		hud.set_steps(steps, i, scores)
+		hud.set_steps(titles, i, scores)
 		var s = await _run_step(order, steps[i])
 		if my_run != run_id:
 			return 0.0
 		scores.append(s)
-		hud.set_steps(steps, i + 1, scores)
+		hud.set_steps(titles, i + 1, scores)
 	var total = 0.0
 	for s in scores:
 		total += s
@@ -315,7 +322,8 @@ func _run_step(order: Dictionary, step: String) -> float:
 	game.prepare()
 	if randf() < 0.5:
 		hud.mentor_say(BK.say(BK.MENTOR["start"]), 2.5)
-	await hud.intro(BK.STEPS[step]["title"], BK.STEPS[step]["how"])
+	var info = BK.step_info(step, order.get("tier", 0))
+	await hud.intro(info["title"], info["how"])
 	Sfx.play("tick", 1.2)
 	if my_run != run_id:
 		return 0.0

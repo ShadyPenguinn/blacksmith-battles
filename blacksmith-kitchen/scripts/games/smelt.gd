@@ -68,4 +68,4 @@ func draw_game() -> void:
 	var too = (band[1] + BK.SMELT["scorch_margin"]) / 100.0
 	var ty = r.end.y - r.size.y * too
 	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, ty - r.position.y), Color(0.9, 0.15, 0.1, 0.35))
-	hbar(Rect2(vs.x * 0.5 - 180, vs.y - 70, 360, 22), smelted / BK.SMELT["need"], Color(1.0, 0.6, 0.2), "SMELTING")
+	hbar(Rect2(vs.x * 0.5 - 180, vs.y - 70, 360, 22), smelted / BK.SMELT["need"], Color(1.0, 0.6, 0.2), "MELTING" if route() == "cast" else "COOKING THE BLOOM")

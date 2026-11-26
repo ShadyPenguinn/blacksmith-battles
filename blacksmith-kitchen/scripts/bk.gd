@@ -38,13 +38,16 @@ static func medal_by_id(id: String) -> Dictionary:
 
 # --- Materials ----------------------------------------------------------------
 ## Harder metals make every step a little harder (faster meters, narrower bands, more ropes).
+## route: "cast" metals melt in a crucible and are poured into a mold; "forge" metals never
+## melt, so they come out of the bloomery as a spongy bloom that is hammered into shape.
+## folds: how many times the bar is folded and welded (steel and up).
 const MATERIALS := [
-	{"name": "Copper", "color": Color(0.85, 0.48, 0.25), "band": [30.0, 55.0], "pay": 1.0, "ore": "Copper_Nugget_Large", "bar": "Copper_Bar"},
-	{"name": "Bronze", "color": Color(0.80, 0.62, 0.28), "band": [40.0, 62.0], "pay": 1.3, "ore": "Gold_Nugget_Large", "bar": "Gold_Bar"},
-	{"name": "Iron", "color": Color(0.55, 0.56, 0.62), "band": [52.0, 72.0], "pay": 1.7, "ore": "Iron_Nugget_Large", "bar": "Iron_Bar"},
-	{"name": "Steel", "color": Color(0.78, 0.82, 0.88), "band": [62.0, 80.0], "pay": 2.2, "ore": "Iron_Nugget_Large", "bar": "Iron_Bar"},
-	{"name": "Moonsilver", "color": Color(0.6, 0.75, 1.0), "band": [60.0, 76.0], "pay": 3.0, "ore": "Silver_Nugget_Large", "bar": "Silver_Bar"},
-	{"name": "Starmetal", "color": Color(1.0, 0.9, 0.4), "band": [74.0, 88.0], "pay": 4.0, "ore": "Gold_Nugget_Large", "bar": "Gold_Bar"},
+	{"name": "Copper", "color": Color(0.85, 0.48, 0.25), "band": [30.0, 55.0], "pay": 1.0, "ore": "Copper_Nugget_Large", "bar": "Copper_Bar", "route": "cast", "folds": 0},
+	{"name": "Bronze", "color": Color(0.80, 0.62, 0.28), "band": [40.0, 62.0], "pay": 1.3, "ore": "Gold_Nugget_Large", "bar": "Gold_Bar", "route": "cast", "folds": 0},
+	{"name": "Iron", "color": Color(0.55, 0.56, 0.62), "band": [52.0, 72.0], "pay": 1.7, "ore": "Iron_Nugget_Large", "bar": "Iron_Bar", "route": "forge", "folds": 0},
+	{"name": "Steel", "color": Color(0.78, 0.82, 0.88), "band": [62.0, 80.0], "pay": 2.2, "ore": "Iron_Nugget_Large", "bar": "Iron_Bar", "route": "forge", "folds": 2},
+	{"name": "Moonsilver", "color": Color(0.6, 0.75, 1.0), "band": [60.0, 76.0], "pay": 3.0, "ore": "Silver_Nugget_Large", "bar": "Silver_Bar", "route": "cast", "folds": 0},
+	{"name": "Starmetal", "color": Color(1.0, 0.9, 0.4), "band": [74.0, 88.0], "pay": 4.0, "ore": "Gold_Nugget_Large", "bar": "Gold_Bar", "route": "forge", "folds": 3},
 ]
 
 # --- Steps (the minigames) ----------------------------------------------------
@@ -62,31 +65,84 @@ const STEPS := {
 	"polish": {"title": "Polish", "how": "Hold and scrub the grime off the blade!", "script": "polish"},
 	"etch": {"title": "Etch a Rune", "how": "Hold and trace through the dots in order, 1 to the end!", "script": "etch"},
 	"fit": {"title": "Fit the Handle", "how": "{Click} or SPACE to drop the handle into the socket, then tap it home!", "script": "fit"},
+	"crush": {"title": "Crush the Ore", "how": "{Click} the big chunks to smash them into gravel for the roasting pan. Don't smash the gravel into dust!", "script": "crush"},
+	"pour": {"title": "Pour the Mold", "how": "Hold to tip the crucible (or hold SPACE). Pour steady, fill to the line, don't spill! Then {click} to crack the mold.", "script": "pour"},
+	"fold": {"title": "Fold and Weld", "how": "Grab the right end of the bar and drag it over onto the left end, then hammer it shut fast!", "script": "fold"},
+	"temper": {"title": "Temper", "how": "Hold to warm the blade on the coals (or hold SPACE). Let go just before it reaches the target colour: it keeps creeping!", "script": "temper"},
 }
 
+## The same step reads differently on each route.
+const ROUTE_TEXT := {
+	"cast": {
+		"bellows": {"title": "Melt the Metal", "how": "Stomp LEFT, then RIGHT (A / D or {click} each side). Keep the crucible in the gold band until it runs liquid!"},
+		"lever": {"title": "Melt the Metal", "how": "Pull UP, push DOWN (W / S, or {click} top and bottom). Keep the crucible in the gold band until it runs liquid!"},
+	},
+	"forge": {
+		"bellows": {"title": "Fire the Bloomery", "how": "Stomp LEFT, then RIGHT (A / D or {click} each side). Iron never melts: hold the gold band to cook a bloom!"},
+		"lever": {"title": "Fire the Bloomery", "how": "Pull UP, push DOWN (W / S, or {click} top and bottom). Iron never melts: hold the gold band to cook a bloom!"},
+		"tongs": {"title": "Pull the Bloom", "how": "Grab the glowing bloom and hold. Drag it along the chalk path!"},
+		"ropes": {"title": "Squeeze the Bloom", "how": "Hold and drag DOWN to haul the big hammer (or hold SPACE). Let go above the red flag to squeeze out the slag!"},
+		"hammer": {"title": "Shape the Blade", "how": "{Click} or SPACE when the marker is in the middle!"},
+	},
+}
+
+## Title and how-to of a step for this metal.
+static func step_info(step: String, tier: int) -> Dictionary:
+	var info: Dictionary = STEPS[step].duplicate()
+	var over = ROUTE_TEXT.get(route(tier), {}).get(step, {})
+	info.merge(over, true)
+	return info
+
+static func route(tier: int) -> String:
+	return MATERIALS[clampi(tier, 0, MATERIALS.size() - 1)]["route"]
+
 # --- Weapons (the recipes) ----------------------------------------------------
+## Each weapon: whether you dig the ore yourself (mine), how the fire is worked (heat), the
+## temper colour it wants (0 straw .. 3 blue, see TEMPER) and its finishing steps. The route
+## of the metal fills in the middle: see steps_for().
 const M := "res://assets/models/"
 const WEAPONS := {
 	"dagger": {"name": "Dagger", "model": M + "weapons/dagger_A.gltf", "len": 1.0, "pay": 20,
-		"steps": ["bellows", "tongs", "hammer", "quench", "grind"]},
+		"mine": false, "heat": "bellows", "temper": 0, "finish": ["grind"]},
 	"sword": {"name": "Arming Sword", "model": M + "weapons/sword_A.gltf", "len": 1.5, "pay": 35,
-		"steps": ["mine", "bellows", "tongs", "hammer", "quench", "grind", "wrap"]},
+		"mine": true, "heat": "bellows", "temper": 0, "finish": ["grind", "wrap"]},
 	"spear": {"name": "Spear", "model": M + "weapons/spear_A.gltf", "len": 2.2, "pay": 35,
-		"steps": ["bellows", "tongs", "hammer", "quench", "grind", "fit"]},
+		"mine": false, "heat": "bellows", "temper": 1, "finish": ["grind", "fit"]},
 	"axe": {"name": "Hand Axe", "model": M + "weapons/axe_A.gltf", "len": 1.3, "pay": 40,
-		"steps": ["mine", "lever", "tongs", "ropes", "quench", "grind", "fit"]},
+		"mine": true, "heat": "lever", "temper": 1, "finish": ["grind", "fit"]},
 	"warhammer": {"name": "War Hammer", "model": M + "weapons/hammer_A.gltf", "len": 1.4, "pay": 45,
-		"steps": ["mine", "lever", "tongs", "ropes", "quench", "polish"]},
+		"mine": true, "heat": "lever", "temper": 2, "finish": ["polish"]},
 	"staff": {"name": "Rune Staff", "model": M + "weapons/staff_A.gltf", "len": 2.0, "pay": 50,
-		"steps": ["bellows", "tongs", "hammer", "quench", "polish", "etch"]},
+		"mine": false, "heat": "bellows", "temper": 3, "finish": ["polish", "etch"]},
 	"shield": {"name": "Round Shield", "model": M + "weapons/shield_A.gltf", "len": 1.1, "pay": 50,
-		"steps": ["mine", "bellows", "tongs", "ropes", "hammer", "polish", "etch"]},
+		"mine": true, "heat": "bellows", "temper": 3, "finish": ["polish", "etch"]},
 	"greatsword": {"name": "Greatsword", "model": M + "weapons/sword_E.gltf", "len": 2.0, "pay": 80,
-		"steps": ["mine", "bellows", "tongs", "ropes", "hammer", "quench", "grind", "wrap", "polish"]},
+		"mine": true, "heat": "bellows", "temper": 0, "finish": ["grind", "wrap", "polish"]},
 	"halberd": {"name": "Halberd", "model": M + "weapons/halberd.gltf", "len": 2.4, "pay": 90,
-		"steps": ["mine", "lever", "tongs", "ropes", "hammer", "quench", "grind", "fit", "etch"]},
+		"mine": true, "heat": "lever", "temper": 1, "finish": ["grind", "fit", "etch"]},
 }
 const WEAPON_ORDER := ["dagger", "sword", "spear", "axe", "warhammer", "staff", "shield", "greatsword", "halberd"]
+
+## The steps for one weapon in one metal.
+## Cast: crush the ore, melt it in the crucible, pour the mold, finish.
+## Forge: crush, fire the bloomery, pull the bloom, squeeze out the slag, fold (steel and
+## up), shape, quench, temper, finish.
+static func steps_for(weapon: String, tier: int) -> Array:
+	var w = WEAPONS[weapon]
+	var s = []
+	if w["mine"]:
+		s.append("mine")
+	s.append("crush")
+	s.append(w["heat"])
+	if route(tier) == "cast":
+		s.append("pour")
+	else:
+		s.append_array(["tongs", "ropes"])
+		if MATERIALS[tier]["folds"] > 0:
+			s.append("fold")
+		s.append_array(["hammer", "quench", "temper"])
+	s.append_array(w["finish"])
+	return s
 
 # --- People ---------------------------------------------------------------------
 ## The mentor who runs the forge. All lines are original.
@@ -179,6 +235,15 @@ const GRIND := {"spin_per_push": 0.22, "drag": 0.55, "band": [0.45, 0.75], "need
 const WRAP := {"wraps": 8, "beat": 0.75, "beat_per_tier": -0.04}
 const POLISH := {"spots": 6, "spots_per_tier": 1, "limit": 9.0, "rub_needed": 900.0}
 const ETCH := {"limit": 9.0, "tolerance": 38.0}
+const CRUSH := {"chunks": 2, "chunks_per_2_tiers": 1, "size": 3, "limit": 12.0, "dust": 12.0}
+const POUR := {"flow": 0.55, "flow_per_tier": 0.04, "start_tilt": 0.3, "splash_tilt": 0.82,
+	"splash_per_tier": -0.02, "cool": 0.07, "cool_per_tier": 0.012, "metal": 1.25, "cracks": 3}
+const FOLD := {"welds": 4, "weld_time": 2.2, "weld_time_per_tier": -0.15}
+## Temper colours, from first to last as the blade warms. Blades want straw (hard edge),
+## springy things want blue.
+const TEMPER := {"rate": 0.16, "rate_per_tier": 0.02, "coast": 0.8, "band": 0.07,
+	"colors": [["STRAW", Color(0.95, 0.85, 0.5)], ["BRONZE", Color(0.78, 0.5, 0.22)],
+		["PURPLE", Color(0.55, 0.3, 0.62)], ["BLUE", Color(0.25, 0.42, 0.9)], ["GREY", Color(0.55, 0.57, 0.6)]]}
 const MINE := {"cracks": 8, "cracks_per_tier": 1, "life": 1.7, "life_per_tier": -0.12, "gap": 0.55}
 
 # --- Co-op Rush Hour ----------------------------------------------------------------

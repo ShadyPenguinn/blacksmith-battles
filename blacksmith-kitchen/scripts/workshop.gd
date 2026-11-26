@@ -13,6 +13,7 @@ const TANK := Vector3(5.8, 0, -3.9)
 const GRIND := Vector3(7.6, 0, -0.6)
 const BENCH := Vector3(-7.4, 0, 0.6)
 const ROCK := Vector3(-7.6, 0, 3.4)
+const CRUSH := Vector3(-6.2, 0, 3.9)      # the crushing stone, beside the rock
 const COUNTER_Z := 4.2
 const CUSTOMER := Vector3(1.0, 0, 5.1)
 const MENTOR_SPOT := Vector3(0.6, 0, 1.4)
@@ -490,6 +491,7 @@ func _shots() -> void:
 		"grind": [GRIND + Vector3(3.0, 2.1, 0.3), GRIND + Vector3(0, 1.0, 0), 50.0],
 		"bench": [BENCH + Vector3(0, 3.1, 1.2), BENCH + Vector3(0, 1.0, 0.05), 45.0],
 		"mine": [ROCK + Vector3(0, 1.8, 3.0), ROCK + Vector3(0, 0.6, 0), 48.0],
+		"crush": [CRUSH + Vector3(0.4, 2.3, 1.9), CRUSH + Vector3(0.4, 0.2, 0), 48.0],
 	}
 
 func set_shot(name: String, time := 0.8) -> void:

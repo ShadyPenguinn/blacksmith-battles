@@ -133,6 +133,12 @@ func _slam() -> void:
 	var p = Workshop.TRIP + Vector3(0, ws.trip_anvil_top + 0.15, 0)
 	Fx.burst(ws, p, Color(1.0, 0.8, 0.3), 24, 0.7, 7.0, -10.0, 0.5, Vector3.UP, 85.0)
 	Fx.dust(ws, Workshop.TRIP + Vector3(0, 0.1, 0.6), 12, 1.5)
+	if is_bloom():
+		# Slag squirts out of the bloom: dark, glowing drops flying sideways.
+		Fx.burst(ws, p, Color(0.35, 0.12, 0.05), 18, 0.8, 6.0, -12.0, 0.6, Vector3(1, 0.4, 0.4), 60.0, true)
+		Fx.burst(ws, p, Color(0.35, 0.12, 0.05), 18, 0.8, 6.0, -12.0, 0.6, Vector3(-1, 0.4, 0.4), 60.0, true)
+		if drops_left == 1:
+			popup("Slag's out!", Vector2(vsize().x * 0.5, vsize().y * 0.42), Color(1.0, 0.6, 0.3), 30)
 	drops_left -= 1
 	var f = 1.0 - float(drops_left) / float(BK.ROPES["drops"])
 	bar.scale = Vector3(1.0 + f * 0.35, 1.0 - f * 0.5, 1.0 + f * 0.5)

@@ -135,8 +135,18 @@ func set_heat(m: StandardMaterial3D, h: float) -> void:
 	m.emission = BK.heat_color(h * 0.85)
 	m.emission_energy_multiplier = h * 1.3
 
+func route() -> String:
+	return BK.route(tier)
+
+## True while the forged metal is still a lumpy bloom (before it is squeezed into a bar).
+func is_bloom() -> bool:
+	return route() == "forge" and step in ["tongs", "ropes"]
+
 func make_bar(length := 0.7) -> Node3D:
 	var p = BK.M + "resources/" + BK.MATERIALS[tier]["bar"] + ".gltf"
+	if is_bloom():
+		p = BK.M + "resources/" + BK.MATERIALS[tier]["ore"] + ".gltf"
+		length *= 0.75
 	var m = BK.fitted(p, length)
 	if m == null:
 		m = Build.box(Vector3(0.25, 0.15, length), mat_color())
