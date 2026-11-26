@@ -9,7 +9,6 @@ var dust := 0
 var splits_needed := 0
 var splits := 0
 var slab_top := 0.3
-var pan: Node3D
 var pan_pos := Vector3.ZERO
 var sledge: Node3D
 var roasted := 0
@@ -22,19 +21,9 @@ func _slab_center() -> Vector3:
 
 func prepare() -> void:
 	limit = BK.CRUSH["limit"]
-	var slab = Build.box(Vector3(1.7, slab_top, 0.9), Color(0.42, 0.4, 0.38))
-	ws.props.add_child(slab)
-	slab.global_position = _slab_center() + Vector3(0, slab_top * 0.5, 0)
-	# The roasting pan: a shallow tray over coals on the right.
+	slab_top = Workshop.CRUSH_TOP
+	# The crushing stone and roasting pan are part of the workshop.
 	pan_pos = _slab_center() + Vector3(1.25, 0.25, 0.1)
-	pan = Node3D.new()
-	ws.props.add_child(pan)
-	pan.global_position = pan_pos
-	var coals = Build.box(Vector3(0.6, 0.2, 0.6), Color(1.0, 0.4, 0.1), 1.6)
-	pan.add_child(coals)
-	coals.position = Vector3(0, -0.12, 0)
-	var tray = Build.box(Vector3(0.7, 0.06, 0.7), Color(0.25, 0.23, 0.22))
-	pan.add_child(tray)
 	sledge = BK.fitted(BK.M + "tools/hammer.gltf", 0.55)
 	ws.props.add_child(sledge)
 	_sledge_pose(0.0)

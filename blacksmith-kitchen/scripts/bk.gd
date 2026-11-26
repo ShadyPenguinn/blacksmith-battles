@@ -68,6 +68,7 @@ const STEPS := {
 	"crush": {"title": "Crush the Ore", "how": "{Click} the big chunks to smash them into gravel for the roasting pan. Don't smash the gravel into dust!", "script": "crush"},
 	"pour": {"title": "Pour the Mold", "how": "Hold to tip the crucible (or hold SPACE). Pour steady, fill to the line, don't spill! Then {click} to crack the mold.", "script": "pour"},
 	"fold": {"title": "Fold and Weld", "how": "Grab the right end of the bar and drag it over onto the left end, then hammer it shut fast!", "script": "fold"},
+	"crack": {"title": "Crack the Mold", "how": "The mold has cooled. {Click} it to crack it open!", "script": "pour"},
 	"temper": {"title": "Temper", "how": "Hold to warm the blade on the coals (or hold SPACE). Let go just before it reaches the target colour: it keeps creeping!", "script": "temper"},
 }
 
@@ -245,6 +246,54 @@ const TEMPER := {"rate": 0.16, "rate_per_tier": 0.02, "coast": 0.8, "band": 0.07
 	"colors": [["STRAW", Color(0.95, 0.85, 0.5)], ["BRONZE", Color(0.78, 0.5, 0.22)],
 		["PURPLE", Color(0.55, 0.3, 0.62)], ["BLUE", Color(0.25, 0.42, 0.9)], ["GREY", Color(0.55, 0.57, 0.6)]]}
 const MINE := {"cracks": 8, "cracks_per_tier": 1, "life": 1.7, "life_per_tier": -0.12, "gap": 0.55}
+
+# --- Shop days: walk the shop, juggle customers ------------------------------------------
+const SHOP := {
+	"patience": 120.0,          # seconds a customer waits, plus...
+	"patience_per_stage": 12.0, # ...this much per station their weapon needs
+	"gap": 32.0,                # a new customer walks in this often (sooner if nobody's waiting)
+	"first": 2.0,
+	"smelt": 9.0,               # seconds the furnace works on its own after you fire it
+	"smelt_per_tier": 1.0,
+	"ready_window": 14.0,       # then it waits this long before it starts to burn
+	"burn_per_sec": 3.0,        # heat score lost per second it burns
+	"burn_max": 45.0,
+	"cool": 7.0,                # a poured mold cools on its own
+	"cool_per_tier": 0.5,
+	"patience_pay": 0.4,        # this share of the pay depends on how much patience is left
+	"reach": 1.7,               # how close you must stand to use a station
+}
+
+## The walk-around version of a recipe: which station, which minigames there, and what the
+## smith carries away. "wait" stations then work on their own for a while (furnace, mold).
+static func shop_stages(weapon: String, tier: int) -> Array:
+	var w = WEAPONS[weapon]
+	var st = [
+		{"at": "rock", "games": ["mine"], "make": "ore"},
+		{"at": "crush", "games": ["crush"], "make": "crushed"},
+		{"at": "furnace", "games": [w["heat"]], "make": "crucible" if route(tier) == "cast" else "bloom", "wait": "smelt"},
+	]
+	if route(tier) == "cast":
+		st.append({"at": "cast", "games": ["pour"], "make": "mold", "wait": "cool"})
+		st.append({"at": "cast", "games": ["crack"], "make": "blank"})
+	else:
+		st.append({"at": "trip", "games": ["ropes"], "make": "bar"})
+		var shape = ["fold", "hammer"] if MATERIALS[tier]["folds"] > 0 else ["hammer"]
+		st.append({"at": "anvil", "games": shape, "make": "hot_blade"})
+		st.append({"at": "tank", "games": ["quench"], "make": "hard_blade"})
+		st.append({"at": "anvil", "games": ["temper"], "make": "blank"})
+	var finish: Array = w["finish"].duplicate()
+	if "grind" in finish:
+		finish.erase("grind")
+		st.append({"at": "grind", "games": ["grind"], "make": "sharp" if finish.size() > 0 else "done"})
+	if finish.size() > 0:
+		st.append({"at": "bench", "games": finish, "make": "done"})
+	st.append({"at": "counter", "games": [], "make": ""})
+	return st
+
+const STATION_NAMES := {"rock": "Ore Rock", "crush": "Crusher", "furnace": "Furnace", "cast": "Casting Table",
+	"trip": "Big Hammer", "anvil": "Anvil", "tank": "Quench Tank", "grind": "Grindstone", "bench": "Workbench",
+	"counter": "Counter"}
 
 # --- Co-op Rush Hour ----------------------------------------------------------------
 const RUSH := {

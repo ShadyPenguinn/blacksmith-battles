@@ -38,25 +38,33 @@ var cracks := 0
 var pour_score := 0.0
 var lip := Vector3.ZERO
 var gate := Vector3.ZERO
+var base := Workshop.CAST   # the casting table
+var crack_only := false     # shop mode: the mold has cooled, just crack it
+var pour_only := false      # shop mode: pour, then the mold cools on its own
+
+func shot() -> String:
+	return "cast"
 
 func prepare() -> void:
 	limit = 16.0
+	crack_only = order.get("crack_only", false)
+	pour_only = order.get("pour_only", false)
 	metal = BK.POUR["metal"]
 	blade_len = minf(BK.WEAPONS[order.get("weapon", "sword")]["len"], 1.6)
 	var top = ws.bench_top()
 	# Sand mold box on the bench, with the blade's shape pressed into it.
 	mold = Build.box(Vector3(blade_len + 0.45, 0.16, 0.75), Color(0.72, 0.6, 0.42))
 	ws.props.add_child(mold)
-	mold.global_position = Workshop.BENCH + Vector3(0.35, top + 0.08, 0.05)
+	mold.global_position = base + Vector3(0.35, top + 0.08, 0.05)
 	cavity = make_weapon(blade_len)
 	BK.tint(cavity, Color(0.12, 0.09, 0.07), 0.92)
 	cavity.rotation_degrees = Vector3(90, 0, -90)
-	cavity.global_position = Workshop.BENCH + Vector3(0.35, top + 0.162, 0.05)
+	cavity.global_position = base + Vector3(0.35, top + 0.162, 0.05)
 	cavity.scale = Vector3(1.0, 1.0, 0.25)
-	gate = Workshop.BENCH + Vector3(0.35 - blade_len * 0.5 - 0.1, top + 0.17, 0.05)
+	gate = base + Vector3(0.35 - blade_len * 0.5 - 0.1, top + 0.17, 0.05)
 	cast = make_weapon(blade_len)
 	cast.rotation_degrees = Vector3(90, 0, -90)
-	cast.global_position = Workshop.BENCH + Vector3(0.35, top + 0.172, 0.05)
+	cast.global_position = base + Vector3(0.35, top + 0.172, 0.05)
 	cast.scale = Vector3(1.0, 1.0, 0.3)
 	var sh = Shader.new()
 	sh.code = RUN
@@ -80,6 +88,14 @@ func prepare() -> void:
 	stream_mat = stream.material_override
 	ws.props.add_child(stream)
 	stream.visible = false
+	if crack_only:
+		limit = 0.0
+		phase = "crack"
+		fill = 1.0
+		crucible.visible = false
+		cast_shader.set_shader_parameter("front", 100.0)
+		cast_shader.set_shader_parameter("hot", Color(0.55, 0.5, 0.45))
+		pour_score = 100.0
 
 func on_input(e: InputEvent) -> void:
 	if phase == "pour":
@@ -161,6 +177,9 @@ func _end_pour() -> void:
 	else:
 		popup("Clean pour!", Vector2(vs.x * 0.5, vs.y * 0.3), Color(1.0, 0.85, 0.3), 40)
 		Sfx.play("good")
+	if pour_only:
+		phase = "done"
+		get_tree().create_timer(0.9).timeout.connect(func(): finish(pour_score))
 
 func _crack() -> void:
 	cracks += 1
@@ -177,20 +196,22 @@ func _crack() -> void:
 		# Out of the mold: back to the real model, glowing and cooling.
 		for mi in cast.find_children("*", "MeshInstance3D", true, false):
 			mi.material_override = null
-		cast_mat = heat_tint(cast, 0.9)
+		cast_mat = heat_tint(cast, 0.35 if crack_only else 0.9)
 		Fx.burst(ws, cast.global_position, Color(0.72, 0.6, 0.42), 30, 1.4, 4.0, -9.0, 0.8, Vector3.UP, 80.0, true)
 		popup("Fresh from the mold!", Vector2(vsize().x * 0.5, vsize().y * 0.3), Color(1.0, 0.85, 0.3), 36)
 		var cool = create_tween()
-		cool.tween_method(func(h): set_heat(cast_mat, h), 0.9, 0.25, 0.8)
+		cool.tween_method(func(h): set_heat(cast_mat, h), 0.35 if crack_only else 0.9, 0.25, 0.8)
 		get_tree().create_timer(0.9).timeout.connect(func(): finish(pour_score))
 
 func draw_game() -> void:
 	var vs = vsize()
 	# Fill gauge with the FULL line.
 	var r = Rect2(vs.x - 140, vs.y * 0.22, 46, vs.y * 0.48)
-	vgauge(r, fill / 1.1, 0.97 / 1.1, 1.0 / 1.1, Color(1.0, 0.8, 0.2), "MOLD")
+	if not crack_only:
+		vgauge(r, fill / 1.1, 0.97 / 1.1, 1.0 / 1.1, Color(1.0, 0.8, 0.2), "MOLD")
 	# Metal heat left: when it runs out the metal freezes in the pot.
-	hbar(Rect2(vs.x * 0.5 - 180, vs.y - 120, 360, 18), temp, BK.heat_color(0.3 + temp * 0.7), "METAL HEAT")
+	if not crack_only:
+		hbar(Rect2(vs.x * 0.5 - 180, vs.y - 120, 360, 18), temp, BK.heat_color(0.3 + temp * 0.7), "METAL HEAT")
 	if phase == "pour":
 		var splash = BK.POUR["splash_tilt"] + BK.POUR["splash_per_tier"] * tier
 		var tr = Rect2(vs.x - 250, vs.y * 0.22, 40, vs.y * 0.48)
