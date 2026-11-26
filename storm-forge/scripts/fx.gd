@@ -63,7 +63,8 @@ static func burst(parent: Node, pos: Vector3, color: Color, count: int, size := 
 static func dust(parent: Node, pos: Vector3, count: int, size := 1.0) -> void:
 	burst(parent, pos, Color(0.92, 0.9, 0.85, 0.8), count, size, 2.0 * size, 0.6, 0.45)
 
-## Run once at startup, out of sight, so the first real burst is already compiled.
-static func warm_up(parent: Node) -> void:
-	burst(parent, Vector3(0, -50, 0), Color.WHITE, 1)
-	burst(parent, Vector3(0, -50, 0), Color.WHITE, 1, 1.0, 1.0, 0.0, 0.2, Vector3.UP, 10.0, true)
+## Run once at startup right in front of the camera (tiny, so nobody sees it): a shader
+## only compiles once something is drawn, so the first real burst is ready to go.
+static func warm_up(parent: Node, pos: Vector3) -> void:
+	burst(parent, pos, Color.WHITE, 1, 0.02, 0.0, 0.0, 0.1)
+	burst(parent, pos, Color.WHITE, 1, 0.02, 0.0, 0.0, 0.1, Vector3.UP, 10.0, true)

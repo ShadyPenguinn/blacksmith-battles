@@ -21,7 +21,10 @@ const MOVE_SPEED := 5.0
 const SPRINT_MULT := 1.5
 const CARRY_SLOW := 0.6           # speed multiplier while hauling ore, ingots or scrap
 const CARRY_SLOW_EXTRA := 0.07    # each extra heavy thing in your pockets slows you this much more
-const SLOTS := 4                  # hotbar: slot 1 is the tool slot, the rest hold anything but tools
+const SLOTS := 8                  # hotbar: slots 1-4 are tools (one of each), 5-8 are pockets for anything else
+const TOOL_SLOTS := ["pickaxe", "hammer", "tongs", "weapon"]   # slot 4 holds a sword you forged
+const START_TOOLS := ["pickaxe", "hammer", "tongs"]            # every smith starts with these
+const POCKET_START := 4           # first pocket slot
 ## How moving feels. Momentum, jump and the belly flop (jump, then jump again in the air).
 const MOVE := {
 	"accel": 38.0,            # how fast you get up to speed (m/s per second)
@@ -195,7 +198,7 @@ const DEBUFFS := [
 	{"id": "butterfingers", "name": "Butterfingers", "desc": "Sprinting can make you drop things"},
 	{"id": "brittle", "name": "Brittle Batch", "desc": "Weapons wear 40% faster"},
 	{"id": "tiny_anvil", "name": "Tiny Anvil", "desc": "The hammer needs 50% more slams"},
-	{"id": "role_swap", "name": "Role Swap", "desc": "Everyone's tools rotate one smith"},
+	{"id": "role_swap", "name": "Pocket Swap", "desc": "Everyone's pockets pass to the next smith"},
 	{"id": "big_heads", "name": "Big Heads", "desc": "Purely cosmetic. Very big heads"},
 ]
 
@@ -433,10 +436,11 @@ static func tint(n: Node, c: Color, strength: float = 0.5, glow: float = 0.0) ->
 	var m = StandardMaterial3D.new()
 	m.albedo_color = Color(c.r, c.g, c.b, strength)
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	if glow > 0.0:
-		m.emission_enabled = true
-		m.emission = c
-		m.emission_energy_multiplier = glow
+	# Emission is always on (0 when it shouldn't glow) so every tint shares one shader:
+	# turning it on later compiles a new one, and that froze the game for a moment.
+	m.emission_enabled = true
+	m.emission = c
+	m.emission_energy_multiplier = glow
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
 		mi.material_overlay = m
 	if n is MeshInstance3D:

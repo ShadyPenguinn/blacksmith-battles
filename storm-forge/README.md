@@ -11,7 +11,7 @@ It uses Jolt physics, which is built into Godot.
 The menu offers three choices:
 
 - **Play offline**: you control one smith at a time. Press Tab to jump between them and run the whole pipeline yourself.
-- **Host a game**: wait in the lobby for friends, then press Start. Each player gets one smith in join order (host = Miner, then Smelter, Smith, Finisher). Smiths nobody plays leave their tool on the floor for anyone to pick up.
+- **Host a game**: wait in the lobby for friends, then press Start. Each player gets one smith in join order (host = Miner, then Smelter, Smith, Finisher). Every smith carries a pickaxe, hammer and tongs.
 - **Join**: type the host's IP address and press Join.
 
 Online uses direct IP on port 7777 (UDP). On the same Wi-Fi, use the host's local IP (like 192.168.x.x). Over the internet, the host forwards UDP port 7777 on their router. Steam lobbies will replace this later.
@@ -23,10 +23,10 @@ Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2`
 | WASD or arrows | Move |
 | Shift | Sprint |
 | Space | Jump. Press again in the air to belly flop (dodge lightning) |
-| E or right-click | Grab into your hotbar, put things on a station (from your hand or pockets), grip with tongs, or drop |
+| E or right-click | Grab into your hotbar, put things on a station (from your hand or pockets), or drop |
 | F or left-click | Use what you hold. By an anvil rope handle (the closest free one): hold it to haul the hammer up, let go to drop it |
 | Q | Throw what you hold (at the dunk tank it aims for the target) |
-| 1-4 or mouse wheel | Pick a hotbar slot |
+| 1-4 / 5-8 or mouse wheel | Pick a tool / a pocket |
 | Tab | Offline: switch smith (Miner, Smelter, Smith, Finisher) |
 | L | Debug: call lightning on yourself |
 | N | Debug: skip to the next door |
@@ -34,14 +34,16 @@ Command-line shortcuts: `--offline`, `--host`, `--join 1.2.3.4`, `--autostart 2`
 
 ## Hotbar
 
-Every smith has 4 slots. Slot 1 holds your one tool, and you can never carry two tools. Slots 2-4 hold anything else, like 3 chunks of ore. The selected slot is what's in your hand: F uses it and Q throws it. Everything else rides on your back where friends can see it. Each extra heavy thing slows you a bit more, all of it raises your lightning odds, and a strike flings the lot. Press E at the furnace to dump all your ore in at once.
+Every smith carries the whole kit. Slots 1-4 are tools, one of each: pickaxe, hammer, tongs, and a sword once you've forged one. Slots 5-8 are pockets for anything else, like ore, a cold ingot, scrap or the bucket. The selected slot is what's in your hand: F uses it and Q throws it. Everything else rides on your back where friends can see it. Each extra heavy thing slows you a bit more, metal you haul (not your tools) raises your lightning odds, and a strike flings the lot. Press E at the furnace to dump all your ore in at once.
+
+**Hot ingots can't be picked up by hand.** Take out your tongs (3), hold F or the left mouse button by the ingot to grip it, and keep holding while you walk. Let go by the anvil and it lands on the anvil; let go anywhere else and you set it down.
 
 ## The loop
 
 1. **Miner** hits an ore node 3 times with the pickaxe. A chunk pops out.
 2. Press E by the chunk to pocket it (the pickaxe stays in hand), then E at the **furnace** to put it in. Hauling slows you down.
 3. **Smelter** jumps on the two stomp bellows beside the furnace to blow air in (alternate sides: the same one twice in a row pumps less, and five stomps in under two seconds makes the furnace burp a fireball that knocks everyone back). Tuning is in `SF.BELLOWS`. The bellows are a custom KayKit-style model (`assets/models/stations/bellows_giant.glb`, using the Dungeon pack's texture): the lid is hinged at the nozzle and slams shut on each stomp. Keep heat in the band shown over the furnace for 3 seconds. Too hot and the batch turns to slag. The furnace mouth shows the fire: dark when there's no heat, orange while it warms up, yellow when it's the right heat for what's inside, and pulsing red when it's about to slag (colors in `SF.FIRE`).
-4. The hot ingot shoots out of the furnace's chimney (the cap pops open) and lands somewhere random nearby (`SF.CHIMNEY`). The furnace is a custom KayKit-style model (`assets/models/stations/furnace_forge.glb`) with holes on both sides for the bellows nozzles. Grab it with the tongs (E) and put it on the **anvil** (E). Bare hands burn and you drop it.
+4. The hot ingot shoots out of the furnace's chimney (the cap pops open) and lands somewhere random nearby (`SF.CHIMNEY`). The furnace is a custom KayKit-style model (`assets/models/stations/furnace_forge.glb`) with holes on both sides for the bellows nozzles. Hold the use button with the tongs out to grip and carry it, and let go at the **anvil** to put it there. Bare hands can't pick it up.
 5. **Anyone** grabs one of the two red rope handles beside the anvil (hold F or the left mouse button) and walks away from the anvil to haul the giant hammer up. Let go and it drops. The higher it falls, the harder the slam. The head hangs right where the rope holds it: every meter you back up lifts it a meter, and the rope is as long as the frame is tall, so you keep backing up until it's at the top. There are two separate ropes, each held by one smith: pressing F grabs the closest rope nobody is holding. Hauling is slow alone and quicker with a friend on the other rope. Let go and the loose rope whips back up through the pulley and swings before it settles. A full-height slam shakes anyone standing at the anvil off their feet. About 3 full slams shape a Copper blade. Each area the frame is taller, so the hammer goes higher. Harder metals need a longer drop before a slam does anything: a red flag on the post marks the height the head has to clear for the metal on the anvil (Copper needs none, Starmetal needs 2.5 m), and only the drop past it counts. Ingots stay hot for 30 seconds. Tuning is in `SF.TRIP`.
 6. The finished blade springs off the anvil and lands on the **dunk tank** seat. Throw an ore chunk (Q) at the target sliding along the rail behind the tank. A throw at the tank flies straight on from where you stand and arcs to the target's height, so stand in its path and time it. Only a hit while it's in the middle, over the yellow stretch of rail right behind the tank, counts: the target spins over and slaps the blade into the water, and the blade quenches and rides the water slide out the front as a finished sword. A hit anywhere else just dings. Each area the target is smaller and the poles are further apart, and it always slides through the middle at the same speed, so you wait longer for it to come round. Tuning is in `SF.DUNK`. The bucket still fills at the tank.
 7. Take the sword to the **door** and swing (F). Hit the glowing weak spot for double damage. A sword below the door's metal bounces off. Broken swords become scrap; put scrap back in the furnace.

@@ -37,7 +37,11 @@ func _run() -> void:
 	var finisher = main.players[3]
 	main.lightning.next_in = 9999.0   # no random strikes: the lightning checks below call their own
 	check(main.players.size() == 4, "four smiths spawn")
-	check(miner.held.tool == "pickaxe" and smelter.held.tool == "tongs" and smith.held.tool == "hammer" and finisher.held.tool == "bucket", "each smith holds their tool")
+	var kits_ok = true
+	for p in main.players:
+		kits_ok = kits_ok and p.slots[0].tool == "pickaxe" and p.slots[1].tool == "hammer" and p.slots[2].tool == "tongs" and p.slots[3] == null and p.held == p.slots[0]
+	check(kits_ok, "every smith starts with pickaxe, hammer and tongs (pickaxe in hand, sword slot empty)")
+	check(items_of("tool").filter(func(i): return i.tool == "bucket" and i.is_free()).size() == 1, "one bucket waits by the dunk tank")
 
 	# Mine copper.
 	var node = get_nodes_in_group("node")[0]
@@ -96,32 +100,33 @@ func _run() -> void:
 	put(miner, ores[0].global_position)
 	await frames(2)
 	main.interact(miner)
-	check(miner.slots[1] == ores[0] and miner.held.tool == "pickaxe", "miner pockets the ore and keeps the pickaxe in hand")
+	check(miner.slots[SF.POCKET_START] == ores[0] and miner.held.tool == "pickaxe", "miner pockets the ore and keeps the pickaxe in hand")
 	put(miner, main.furnace.global_position + Vector3(0, 0, 2.0))
 	await frames(2)
 	main.interact(miner)
-	check(main.furnace.contents.get("copper", 0) == 1 and miner.slots[1] == null, "E at the furnace empties the ore from your pockets")
+	check(main.furnace.contents.get("copper", 0) == 1 and miner.slots[SF.POCKET_START] == null, "E at the furnace empties the ore from your pockets")
 
-	# Hotbar: three pockets, one tool, scroll to switch.
+	# Hotbar: three tools, four pockets, scroll or number keys to switch.
 	var spare = []
-	for i in 4:
+	for i in 5:
 		spare.append(main.spawn_item("ore", Vector3(-6, 0.5, 5), {"ore": "copper"}))
 	put(miner, Vector3(-6, 0, 5))
 	await frames(2)
-	for i in 3:
+	for i in 4:
 		main.interact(miner)
-	check(miner.items().size() == 4, "a tool plus three pockets of ore")
-	check(main.interact(miner) == "Pockets full", "a fourth chunk doesn't fit")
+	check(miner.items().size() == 7, "three tools plus four pockets of ore")
+	check(main.interact(miner) == "Pockets full", "a fifth chunk doesn't fit")
 	main.do_action(miner, "slot_next", {})
-	check(miner.held != null and miner.held.kind == "ore", "scrolling selects the next slot")
+	check(miner.held != null and miner.held.tool == "hammer", "scrolling selects the next slot")
+	main.do_action(miner, "slot_5", {})
+	check(miner.held != null and miner.held.kind == "ore", "5 picks the first pocket")
 	main.do_action(miner, "slot_1", {})
-	check(miner.held.tool == "pickaxe", "1 goes back to the tool slot")
+	check(miner.held.tool == "pickaxe", "1 goes back to the pickaxe")
 	var hammer_spot = main.spawn_item("tool", Vector3(-6, 0.5, 5), {"tool": "hammer"})
-	main.do_action(miner, "slot_2", {})
 	for it in spare:
 		if it.is_free():
 			main.despawn(it)
-	check(main.interact(miner).begins_with("One tool"), "can't carry a second tool")
+	check(main.interact(miner).begins_with("You already have"), "can't carry a second hammer")
 	main.despawn(hammer_spot)
 	for it in miner.items():
 		if it.kind == "ore":
@@ -175,15 +180,22 @@ func _run() -> void:
 	await frames(2)
 	await frames(40)
 
-	# Tongs grip the hot ingot and place it on the anvil.
+	# Bare hands can't take a hot ingot.
 	put(smelter, ingots[0].global_position)
 	await frames(2)
-	main.interact(smelter)
-	check(smelter.held.tongs_load == ingots[0], "tongs grip the hot ingot")
+	check(main.interact(smelter).begins_with("Too hot") and ingots[0].is_free(), "a hot ingot can't be picked up by hand")
+	# Hold use with the tongs out to carry it; let go by the anvil and it lands on the anvil.
+	main.do_action(smelter, "slot_3", {})
+	main.do_action(smelter, "use", {})
+	smelter.in_hold = true
+	check(smelter.held.tool == "tongs" and smelter.held.tongs_load == ingots[0], "holding use with the tongs grips the hot ingot")
+	await frames(20)
 	put(smelter, main.anvil.global_position + Vector3(0, 0, 1.3))
-	await frames(2)
-	main.interact(smelter)
-	check(main.anvil.slot == ingots[0], "ingot sits on the anvil")
+	await frames(10)
+	check(smelter.held.tongs_load == ingots[0], "the tongs keep it while the button is held")
+	smelter.in_hold = false
+	await frames(3)
+	check(main.anvil.slot == ingots[0] and smelter.held.tongs_load == null, "letting go by the anvil puts the ingot on it")
 
 	# Rope hammer: grab the handle, walk back to haul the head up, let go to slam.
 	main.lightning.next_in = 9999.0
@@ -272,9 +284,14 @@ func _run() -> void:
 
 	main.set_controlled(0)
 
-	# Bucket still fills at the tank.
-	put(finisher, tank.global_position + Vector3(1.2, 0, 1.0))
+	# Bucket still fills at the tank (it rides in a pocket).
 	finisher.stun = 0.0
+	var bk = items_of("tool").filter(func(i): return i.tool == "bucket")[0]
+	if bk.holder:
+		bk.holder.take(bk)
+	finisher.pick_up(bk)
+	finisher.select(finisher.slots.find(bk))
+	put(finisher, tank.global_position + Vector3(1.2, 0, 1.0))
 	await frames(2)
 	main.use(finisher)
 	check(finisher.held.bucket_full, "bucket fills at the dunk tank")
@@ -348,8 +365,7 @@ func _run() -> void:
 	main.door.hp = 5.0
 	main.use(miner)  # miner has ore? make sure door can still break with a pickaxe
 	miner.drop()
-	var pick = items_of("tool").filter(func(i): return i.tool == "pickaxe")[0]
-	miner.pick_up(pick)
+	miner.select(0)
 	put(miner, Vector3(0, 0, main.door.global_position.z + 1.6))
 	await frames(2)
 	for i in 10:
@@ -373,8 +389,8 @@ func _run() -> void:
 	if miner.slots[0]:
 		miner.drop_item(miner.slots[0])
 	pickaxe.release()
-	miner.select(0)
 	miner.pick_up(pickaxe)
+	miner.select(0)
 	var vein = main.area_nodes[0]
 	vein.set_chunks(1)
 	put(miner, vein.global_position + Vector3(0, 0, 1.2))
@@ -427,16 +443,27 @@ func _run() -> void:
 	var bucket = items_of("tool").filter(func(i): return i.tool == "bucket")[0]
 	if bucket.holder:
 		bucket.holder.take(bucket)
-	if finisher.slots[0]:
-		finisher.drop_item(finisher.slots[0])
-	finisher.select(0)
 	finisher.pick_up(bucket)
+	finisher.select(finisher.slots.find(bucket))
 	finisher.held.bucket_full = true
 	miner.stun = 2.0
 	put(finisher, miner.global_position + Vector3(0.8, 0, 0))
 	await frames(1)
 	main.use(finisher)
 	check(miner.stun <= 0.0, "a full bucket revives a stunned smith")
+
+	# A smith left two rooms back (that floor is gone) gets carried to the current room.
+	var stay = finisher
+	var before = main.door_index
+	for k in 2:
+		main.paused_for_roll = false
+		main.door_broken()
+		await frames(5)
+	main.paused_for_roll = false
+	put(stay, main.area_origin(before) + Vector3(0, 0, 5))
+	await frames(10)
+	var zf = main.area_origin(main.door_index).z
+	check(stay.global_position.y > -1.0 and stay.global_position.z < zf + 14.5, "a smith left rooms behind is brought to the current room")
 
 	# Running out the storm ends the run.
 	main.time_left = 0.0

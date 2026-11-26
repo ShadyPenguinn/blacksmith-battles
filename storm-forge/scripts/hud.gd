@@ -2,7 +2,7 @@ extends CanvasLayer
 ## On-screen text: timer, door, buffs and debuffs, hints, toasts, the slot-machine roll.
 
 var main: Node
-const CONTROLS := "WASD move   Shift sprint   Space jump (again in air: belly flop)   E / right-click grab, place, drop   F / click use   Q throw   1-4 / wheel pick slot   Tab switch smith   L call lightning   N skip door"
+const CONTROLS := "WASD move   Shift sprint   Space jump (again in air: belly flop)   E / right-click grab, place, drop   F / click use (hold with tongs to carry)   Q throw   1-4 tools, 5-8 pockets, wheel   Tab switch smith   L call lightning   N skip door"
 var top_left: Label
 var top_right: Label
 var bottom: Label
@@ -65,7 +65,8 @@ func setup(p_main: Node) -> void:
 	slot_style_sel.set_border_width_all(4)
 	for i in SF.SLOTS:
 		var panel = PanelContainer.new()
-		_place(panel, 0.5, 1.0, -330 + i * 166, -118, 158, 64)
+		# Tools on the left, a gap, then pockets.
+		_place(panel, 0.5, 1.0, -508 + i * 124 + (24 if i >= SF.POCKET_START else 0), -118, 118, 64)
 		var l = Label.new()
 		l.add_theme_font_size_override("font_size", 17)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -204,7 +205,7 @@ func refresh() -> void:
 	for i in hotbar.size():
 		hotbar[i][0].visible = main.run_started
 		var it = p.slots[i] if i < p.slots.size() else null
-		var name = it.display_name() if it and is_instance_valid(it) else ("tool" if i == 0 else "-")
+		var name = it.display_name() if it and is_instance_valid(it) else (("Sword" if i == 3 else SF.TOOL_SLOTS[i].capitalize()) if i < SF.POCKET_START else "-")
 		hotbar[i][1].text = "%d  %s" % [i + 1, name]
 		hotbar[i][1].modulate.a = 1.0 if it else 0.5
 		hotbar[i][0].add_theme_stylebox_override("panel", slot_style_sel if i == p.sel else slot_style)

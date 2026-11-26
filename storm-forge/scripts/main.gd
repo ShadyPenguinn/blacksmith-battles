@@ -128,6 +128,7 @@ func _setup_input() -> void:
 		"sprint": [KEY_SHIFT], "dive": [KEY_SPACE], "interact": [KEY_E],
 		"use": [KEY_F, KEY_J], "throw": [KEY_Q], "restart": [KEY_R],
 		"slot_1": [KEY_1], "slot_2": [KEY_2], "slot_3": [KEY_3], "slot_4": [KEY_4],
+		"slot_5": [KEY_5], "slot_6": [KEY_6], "slot_7": [KEY_7], "slot_8": [KEY_8],
 		"next_smith": [KEY_TAB],
 		"debug_strike": [KEY_L], "debug_skip": [KEY_N],
 	}
@@ -172,7 +173,6 @@ func _build_world() -> void:
 	add_child(sun)
 
 	cam = Camera3D.new()
-	Fx.warm_up(self)
 	cam.fov = 55
 	add_child(cam)
 
@@ -193,6 +193,42 @@ func _build_world() -> void:
 	hud.set_script(HudScript)
 	add_child(hud)
 	hud.setup(self)
+	_warm_up()
+
+## Shaders only compile the first time something is actually drawn, and in the browser that
+## froze the game for a moment on the first hot ingot, the first lightning strike and so on.
+## So for the first few frames a tiny copy of everything that shows up later sits right in
+## front of the camera (too small to see), then goes away.
+func _warm_up() -> void:
+	var rack = Node3D.new()
+	rack.name = "WarmUp"
+	cam.add_child(rack)
+	rack.position = Vector3(0, 0, -1.0)
+	rack.scale = Vector3.ONE * 0.004
+	var x = 0.0
+	var parts: Array[Node3D] = []
+	for key in ["ingot", "blank", "weapon", "ore_chunk"]:
+		for glow in [0.0, 1.5]:
+			var m = SF.fitted_model(key, Vector3(0.5, 0.5, 1.0), true)
+			if m:
+				SF.tint(m, Color(0.8, 0.5, 0.3), 0.5, glow)
+				parts.append(m)
+	for tool in ["pickaxe", "tongs", "hammer", "bucket"]:
+		var t = SF.fitted_model(tool, Vector3(0.25, 0.25, 1.1), true)
+		if t:
+			parts.append(t)
+	parts.append(Build.box(Vector3.ONE, Color.WHITE))
+	parts.append(Build.box(Vector3.ONE, Color.WHITE, 14.0))
+	parts.append(Build.cyl(0.5, 0.1, Color(0.1, 0.1, 0.1)))
+	parts.append(Build.label("Warm", 32))
+	for n in parts:
+		rack.add_child(n)
+		n.position = Vector3(x, 0, 0)
+		x += 0.6
+	Fx.warm_up(cam, cam.to_global(Vector3(0, 0, -1.0)))
+	for i in 4:
+		await get_tree().process_frame
+	rack.queue_free()
 
 func _wall(parent: Node3D, pos: Vector3, size: Vector3, visible_wall: bool) -> void:
 	var w = StaticBody3D.new()
@@ -399,6 +435,17 @@ func _free_area(k: int) -> void:
 					c.retire()
 			root.queue_free()
 
+## A smith left two or more rooms behind (that floor is gone) or falling off the world
+## gets carried to the entrance of the current room, so switching to them never shows
+## an endless fall.
+func _catch_strays() -> void:
+	var o = area_origin(door_index)
+	for p in players:
+		var behind = p.global_position.z > o.z + SF.AREA_STEP + 14.5
+		if p.global_position.y < -6.0 or behind:
+			p.global_position = o + Vector3(randf_range(-3.0, 3.0), 0.5, 11.0)
+			p.velocity = Vector3.ZERO
+
 ## [id, ore, x, z, chunks]
 func _add_node(n: Array) -> StaticBody3D:
 	var node = _station("node", Vector3(n[2], 0.6, n[3]), Vector3(1.4, 1.2, 1.4), SF.ORE_COLORS[n[1]], {"ore": n[1], "node_id": n[0], "chunks": n[4]})
@@ -485,17 +532,21 @@ func start_run(n: int = -1) -> void:
 	door = null
 	build_area(make_layout(0))
 	_make_players(player_count)
-	for i in SF.ROLES.size():
-		var t = spawn_item("tool", TOOL_SPOTS[i], {"tool": SF.ROLES[i]["tool"]})
-		t.owner_idx = i
-		if i < players.size():
-			var p = players[i]
-			p.clear_slots()
-			p.stun = 0.0
-			p.set_big_head(1.0)
-			p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
-			p.velocity = Vector3.ZERO
+	# Every smith carries the whole kit: pickaxe, hammer and tongs (slot 4 waits for a sword).
+	for i in players.size():
+		var p = players[i]
+		p.clear_slots()
+		p.stun = 0.0
+		p.set_big_head(1.0)
+		p.global_position = Vector3(-3.0 + 2.0 * i, 0.1, 2.0)
+		p.velocity = Vector3.ZERO
+		for tool in SF.START_TOOLS:
+			var t = spawn_item("tool", p.global_position + Vector3.UP, {"tool": tool})
+			t.owner_idx = i
 			p.pick_up(t)
+		p.select(0)
+	# One bucket by the dunk tank for reviving friends (it rides in a pocket).
+	spawn_item("tool", TOOL_SPOTS[3], {"tool": "bucket"})
 	set_controlled(net.my_smith if is_online() else 0)
 	hud.hide_big()
 	net.send_event("restart")
@@ -572,17 +623,22 @@ func _finish_roll(buff: Dictionary, debuff: Dictionary) -> void:
 	net.send_event("hide_big")
 	start_area()
 
+## Pocket Swap: everything in each smith's pockets passes to the next smith.
 func _role_swap() -> void:
-	var tools = []
+	var packs = []
 	for p in players:
-		tools.append(p.slots[0])
+		var pack = []
+		for i in range(SF.POCKET_START, p.slots.size()):
+			if p.slots[i]:
+				pack.append(p.slots[i])
+				p.slots[i] = null
+		packs.append(pack)
 	for i in players.size():
-		var incoming = tools[(i - 1 + players.size()) % players.size()]
 		var p = players[i]
-		p.slots[0] = null
-		if incoming:
-			incoming.holder = null
-			p.pick_up(incoming)
+		for it in packs[(i - 1 + players.size()) % players.size()]:
+			it.holder = null
+			if not p.pick_up(it):
+				it.release()
 
 func game_over() -> void:
 	over = true
@@ -623,6 +679,7 @@ func _host_process(delta: float) -> void:
 	if Input.is_action_just_pressed("restart") and over:
 		start_run()
 		return
+	_catch_strays()
 	if not over and not paused_for_roll:
 		_vein_tick(delta)
 		if time_left > 0.0:
@@ -648,7 +705,7 @@ func _handle_input() -> void:
 		do_action(p, a, {})
 
 const ACTIONS := ["interact", "use", "throw", "dive", "debug_strike", "debug_skip",
-	"slot_1", "slot_2", "slot_3", "slot_4", "slot_prev", "slot_next"]
+	"slot_1", "slot_2", "slot_3", "slot_4", "slot_5", "slot_6", "slot_7", "slot_8", "slot_prev", "slot_next"]
 
 func _pressed_actions() -> Array:
 	var out = []
@@ -693,6 +750,18 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 			elif said.begins_with("Put") or said.begins_with("Placed"):
 				p.act("place")
 		"use":
+			# Tongs out by a hot ingot or blade: grip it. It stays gripped while you hold the button.
+			var tg = p.tongs()
+			if tg and p.held == tg and tg.tongs_load == null:
+				var grab = tongs_target(p)
+				if grab:
+					p.grip_with_tongs(grab)
+					p.act("grab")
+					_say(p, "Keep holding to carry it. Let go to set it down")
+					return
+			if tg and p.held == tg and tg.tongs_load:
+				tongs_let_go(p, tg)
+				return
 			# By the anvil's rope handle: grab it (hold the button to keep hauling).
 			var slot = anvil.free_rope_for(p) if anvil else -1
 			if slot >= 0:
@@ -889,27 +958,9 @@ func can_accept(st: Node3D, it: RigidBody3D) -> bool:
 ## E: place on a station (from your hand or pockets), pick up, grip with tongs, or drop.
 func interact(p) -> String:
 	var h: RigidBody3D = p.held
-	if h and h.kind == "tool" and h.tool == "tongs":
-		if h.tongs_load:
-			var load_item = h.tongs_load
-			var st = nearest_station(p, ["anvil", "trough", "furnace"])
-			if st and can_accept(st, load_item):
-				h.tongs_load = null
-				load_item.gripped_by = null
-				st.accept(load_item)
-				return _say(p, "Placed it on the " + st.kind)
-			h.tongs_load = null
-			load_item.release(p.facing * 1.5 + Vector3.UP * 1.0)
-			return _say(p, "Set it down")
-		var grab = nearest_item(p, ["ingot", "blank"])
-		if grab:
-			if grab.station:
-				grab.station.clear_slot(grab)
-				grab.station = null
-			h.tongs_load = grab
-			grab.gripped_by = h
-			grab.attach()
-			return _say(p, "Tongs grip " + grab.display_name())
+	if h and h.kind == "tool" and h.tool == "tongs" and h.tongs_load:
+		p.tongs_hold = false
+		return tongs_let_go(p, h)
 	# At a station: put in what fits, the thing in your hand first. The furnace takes it all.
 	var st2 = nearest_station(p, ["anvil", "trough", "furnace"])
 	if st2:
@@ -937,13 +988,47 @@ func interact(p) -> String:
 			p.drop(p.facing * 1.5 + Vector3.UP * 1.0)
 			p.pick_up(near)
 			return _say(p, "Swapped for " + near.display_name())
-		if near.kind == "tool":
-			return _say(p, "One tool at a time. Select it and press E to swap.")
+		if near.kind == "ingot" and near.hot > 0.0:
+			return _say(p, "Too hot to touch! Hold the use button with your tongs out")
+		if near.kind == "tool" and PlayerScript.tool_slot(near) >= 0:
+			return _say(p, "You already have a " + near.tool)
 		return _say(p, "Pockets full")
 	if h == null:
 		return _say(p, "Nothing to grab")
 	p.drop(p.facing * 1.5 + Vector3.UP * 1.0)
 	return _say(p, "Dropped " + h.display_name())
+
+## What the tongs would grip right now: the nearest loose hot ingot or blade. Things already
+## sitting on the anvil stay put, so the anvil's ropes still work with your tongs out.
+func tongs_target(p) -> RigidBody3D:
+	var best: RigidBody3D = null
+	var bd = SF.REACH
+	for it in get_tree().get_nodes_in_group("item"):
+		if not (it.kind in ["ingot", "blank"]) or not it.is_free():
+			continue
+		if it.station and it.station.kind == "anvil":
+			continue
+		var d = _flat_dist(p.global_position, it.global_position)
+		if d <= bd:
+			bd = d
+			best = it
+	return best
+
+## Let go of what the tongs carry: onto the station in front of you if it fits, else
+## set it down in front of you.
+func tongs_let_go(p, t: RigidBody3D) -> String:
+	var load_item: RigidBody3D = t.tongs_load
+	if load_item == null:
+		return ""
+	t.tongs_load = null
+	load_item.gripped_by = null
+	var st = nearest_station(p, ["anvil", "trough", "furnace"])
+	if st and can_accept(st, load_item):
+		st.accept(load_item)
+		p.act("place")
+		return _say(p, "Placed it on the " + st.kind)
+	load_item.release(p.facing * 1.5 + Vector3.UP * 1.0)
+	return _say(p, "Set it down")
 
 func _near_door(p: Node3D) -> bool:
 	var front = door.global_position.z + door.size.z * 0.5
