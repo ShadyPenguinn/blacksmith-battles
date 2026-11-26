@@ -201,7 +201,7 @@ func _fire_glow() -> void:
 	var f: Dictionary = SF.FIRE
 	if heat < 1.0:
 		fire_mat.albedo_color = Color(0.07, 0.05, 0.04)
-		fire_mat.emission_enabled = false
+		fire_mat.emission_energy_multiplier = 0.0
 		return
 	var c: Color
 	var e: float
@@ -289,6 +289,8 @@ func use_furnace_model() -> bool:
 	if glow is MeshInstance3D:
 		var mat = StandardMaterial3D.new()
 		mat.albedo_color = Color(0.07, 0.05, 0.04)
+		mat.emission_enabled = true   # always on (energy 0 when cold): flipping it compiles a shader
+		mat.emission_energy_multiplier = 0.0
 		glow.material_override = mat
 		mouth = glow
 		mouth_flares = false

@@ -25,6 +25,7 @@ var net_loose = true
 var has_model = false
 var grip = Transform3D.IDENTITY   # where the model's own origin sits: lined up with a hand slot when held
 var tint_mat: StandardMaterial3D = null
+var tint_glow = 0.0   # the tint's own glow, kept once an ingot cools
 
 func setup(p_kind: String, opts: Dictionary = {}) -> void:
 	kind = p_kind
@@ -67,6 +68,7 @@ func retint() -> void:
 			SF.tint(visual, SF.material_color(tier), 0.0 if tier == 0 else 0.5)
 	var mi = visual.find_children("*", "MeshInstance3D", true, false)
 	tint_mat = mi[0].material_overlay if not mi.is_empty() else null
+	tint_glow = tint_mat.emission_energy_multiplier if tint_mat else 0.0
 
 func _model_key() -> String:
 	match kind:
@@ -123,8 +125,7 @@ func is_metal() -> bool:
 		return true
 	if kind == "ore":
 		return ore != "coal"
-	if kind == "tool":
-		return tool != "bucket"
+	# Everyone carries the same metal tools, so only the metal you haul counts toward lightning.
 	return false
 
 func is_heavy() -> bool:
@@ -156,13 +157,12 @@ func _physics_process(delta: float) -> void:
 		hot = maxf(0.0, hot - delta)
 	# Glow while hot.
 	if kind == "ingot" and has_model and tint_mat:
-		tint_mat.emission_enabled = hot > 0.0
 		tint_mat.emission = Color(1.0, 0.45, 0.1)
-		tint_mat.emission_energy_multiplier = 1.5 * hot / SF.INGOT_HOT_TIME
+		tint_mat.emission_energy_multiplier = 1.5 * hot / SF.INGOT_HOT_TIME if hot > 0.0 else tint_glow
 	elif kind == "ingot" and visual.get_child_count() > 0 and visual.get_child(0) is MeshInstance3D:
 		var m: StandardMaterial3D = (visual.get_child(0) as MeshInstance3D).material_override
 		if m:
-			m.emission_enabled = hot > 0.0
+			m.emission_enabled = true
 			m.emission = Color(1.0, 0.45, 0.1)
 			m.emission_energy_multiplier = 1.5 * hot / SF.INGOT_HOT_TIME
 	tag.text = ""

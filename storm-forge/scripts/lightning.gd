@@ -117,12 +117,8 @@ func _bolt(pos: Vector3) -> void:
 		seg.global_position = (p + q) * 0.5
 		seg.look_at_from_position(seg.global_position, q, Vector3.RIGHT)
 		p = q
-	var light = OmniLight3D.new()
-	light.light_color = Color(0.8, 0.85, 1.0)
-	light.light_energy = 20.0
-	light.omni_range = 12.0
-	bolt.add_child(light)
-	light.global_position = pos + Vector3.UP * 1.5
+	# No OmniLight here: the first light of its kind makes every nearby material compile a
+	# new shader, which froze the game on the first strike. The screen flash lights it instead.
 	var scorch = Build.cyl(1.0, 0.02, Color(0.1, 0.1, 0.1))
 	add_child(scorch)
 	scorch.global_position = Vector3(pos.x, 0.02, pos.z)

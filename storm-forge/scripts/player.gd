@@ -6,8 +6,8 @@ extends CharacterBody3D
 var main: Node
 var idx = 0
 var role: Dictionary
-## Hotbar. Slot 0 holds your one tool; slots 1-3 hold anything that isn't a tool.
-## held is whatever's in the selected slot: that's what F uses and Q throws.
+## Hotbar. Slots 0-3 are tools, one of each (pickaxe, hammer, tongs, sword); slots 4-7 are
+## pockets for anything else. held is whatever's in the selected slot: F uses it, Q throws it.
 var slots: Array = []
 var sel = 0
 var held: RigidBody3D:
@@ -34,7 +34,7 @@ var turn_speed = 0.0                # how fast the body is turning, for banking
 var net_air = false                 # client copy of "in the air"
 var was_air = false
 var facing = Vector3(0, 0, -1)
-var lost_tool: RigidBody3D = null   # for Magnet Gloves
+var lost_tools: Array = []          # for Magnet Gloves
 var butter_t = 0.0
 var visual: Node3D
 var head: Node3D
@@ -47,6 +47,8 @@ var in_hold = false                 # use button held down (hauling a rope)
 var rope: Node3D = null             # the anvil whose hammer rope you're hauling
 var rope_slot = 0                   # which of its two ropes
 var rope_grace = 0.0                # just grabbed: don't let go before the held button arrives
+var tongs_hold = false              # gripping something with the tongs while the use button is held
+var tongs_grace = 0.0
 var puppet = false                  # client side: follow snapshots
 var net_pos = Vector3.ZERO
 var net_rot = Vector3.ZERO
@@ -199,26 +201,65 @@ func heavy_count() -> int:
 			n += 1
 	return n
 
-## Which slot an item would go in, or -1 if there's no room. Tools only fit slot 0.
-func slot_for(item: RigidBody3D) -> int:
+## The tool slot this item belongs in (pickaxe, hammer, tongs, sword), or -1 for pocket things.
+static func tool_slot(item: RigidBody3D) -> int:
+	if item.kind == "weapon":
+		return 3
 	if item.kind == "tool":
-		return 0 if slots[0] == null else -1
-	if sel > 0 and slots[sel] == null:
+		return SF.TOOL_SLOTS.find(item.tool)
+	return -1
+
+## Which slot an item would go in, or -1 if there's no room. Each tool has its own slot
+## (a spare sword goes in a pocket), and a hot ingot can't be carried at all: use the tongs.
+func slot_for(item: RigidBody3D) -> int:
+	if item.kind == "ingot" and item.hot > 0.0:
+		return -1
+	var t = tool_slot(item)
+	if t >= 0 and slots[t] == null:
+		return t
+	if item.kind == "tool" and t >= 0:
+		return -1
+	if sel >= SF.POCKET_START and slots[sel] == null:
 		return sel
-	for i in range(1, slots.size()):
+	for i in range(SF.POCKET_START, slots.size()):
 		if slots[i] == null:
 			return i
 	return -1
 
-## The slot an item would need: 0 for a tool, else the selected pocket (or slot 1).
+## The slot an item would need: its tool slot, else the selected pocket (or the first one).
 func blocking_slot(item: RigidBody3D) -> int:
-	if item.kind == "tool":
-		return 0
-	return sel if sel > 0 else 1
+	var t = tool_slot(item)
+	if t >= 0 and item.kind == "tool":
+		return t
+	return sel if sel >= SF.POCKET_START else SF.POCKET_START
+
+## Your tongs, if you have them.
+func tongs() -> RigidBody3D:
+	var t = slots[2]
+	return t if t != null and is_instance_valid(t) and t.kind == "tool" and t.tool == "tongs" else null
+
+## Start carrying something with the tongs. It stays gripped while use is held down.
+func grip_with_tongs(it: RigidBody3D) -> void:
+	select(2)
+	var t = tongs()
+	if it.station:
+		it.station.clear_slot(it)
+		it.station = null
+	t.tongs_load = it
+	it.gripped_by = t
+	it.attach()
+	tongs_hold = true
+	tongs_grace = 0.2
+	in_hold = true
 
 func select(i: int) -> void:
 	sel = clampi(i, 0, slots.size() - 1)
 	burn = 0.0
+	if sel != 2 and tongs_hold:
+		tongs_hold = false
+		var t = tongs()
+		if t and t.tongs_load:
+			main.tongs_let_go(self, t)
 
 func cycle(step: int) -> void:
 	select(posmod(sel + step, slots.size()))
@@ -235,6 +276,7 @@ func clear_slots() -> void:
 	for i in slots.size():
 		slots[i] = null
 	sel = 0
+	tongs_hold = false
 
 func hand_position() -> Vector3:
 	if skel and hand_bone >= 0:
@@ -544,6 +586,14 @@ func _physics_process(delta: float) -> void:
 	rope_grace = maxf(0.0, rope_grace - delta)
 	if rope != null and (stun > 0.0 or rope.dead or (not in_hold and rope_grace <= 0.0)):
 		rope = null
+	tongs_grace = maxf(0.0, tongs_grace - delta)
+	if tongs_hold:
+		var t = tongs()
+		if t == null or t.tongs_load == null or not is_instance_valid(t.tongs_load):
+			tongs_hold = false
+		elif stun <= 0.0 and not in_hold and tongs_grace <= 0.0:
+			tongs_hold = false
+			main.tongs_let_go(self, t)
 	_update_held(delta)
 
 	if stun > 0.0:
@@ -791,7 +841,7 @@ func zap() -> void:
 		var fling = (-away + Vector3(randf_range(-0.5, 0.5), 0, randf_range(-0.5, 0.5))).normalized() * randf_range(5.0, 8.0) + Vector3.UP * 6.0
 		drop_item(it, fling)
 		if it.kind == "tool":
-			lost_tool = it
+			lost_tools.append(it)
 
 func _recover() -> void:
 	stun = 0.0
@@ -799,10 +849,15 @@ func _recover() -> void:
 	visual.position = Vector3(0, 0.85, 0)
 	visual.scale = Vector3.ONE
 	land_sq = -0.25   # spring back up
-	if lost_tool and is_instance_valid(lost_tool) and main.mod("magnet") > 0 and lost_tool.is_free() and slots[0] == null:
-		pick_up(lost_tool)
-		main.toast("Magnet Gloves: tool snapped back")
-	lost_tool = null
+	if main.mod("magnet") > 0:
+		var back = 0
+		for t in lost_tools:
+			if is_instance_valid(t) and t.is_free() and slot_for(t) >= 0:
+				pick_up(t)
+				back += 1
+		if back > 0:
+			main.toast("Magnet Gloves: tools snapped back")
+	lost_tools.clear()
 
 func revive() -> void:
 	if stun > 0.0:
