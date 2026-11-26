@@ -18,6 +18,7 @@ const GAMES := {
 	"pour": preload("res://scripts/games/pour.gd"),
 	"fold": preload("res://scripts/games/fold.gd"),
 	"temper": preload("res://scripts/games/temper.gd"),
+	"crack": preload("res://scripts/games/pour.gd"),
 }
 
 var ws: Workshop
@@ -29,6 +30,7 @@ var game: Game = null
 var run_id := 0             # bumps when you quit to the menu, so a running order stops
 var showcase: Node3D = null
 var rush: Node = null
+var shop: Node = null
 var autoplay := 0.0         # test: finish each step on its own after this many seconds
 
 func _ready() -> void:
@@ -70,6 +72,10 @@ func _to_menu() -> void:
 	if rush and is_instance_valid(rush):
 		rush.queue_free()
 		rush = null
+	if shop and is_instance_valid(shop):
+		shop.over = true
+		shop.queue_free()
+		shop = null
 	ws.clear_props()
 	ws.use_lever(false)
 	ws.set_trip_flag(-1.0)
@@ -218,22 +224,22 @@ func rush_over(earned: int) -> void:
 func start_day(d: int) -> void:
 	hud.clear_menu()
 	mode = "day"
+	run_id += 1
 	day = d
 	day_results = []
-	var my_run = run_id
-	hud.show_top(true)
-	hud.set_top("Day %d: %s" % [d + 1, BK.DAYS[d]["name"]], coins())
-	hud.big("Day %d" % (d + 1), Color(1.0, 0.85, 0.4), 1.6)
-	ws.set_shot("overview", 1.0)
-	await get_tree().create_timer(1.4).timeout
-	if my_run != run_id:
-		return
-	hud.mentor_say(BK.say(BK.MENTOR["hello"]), 3.0)
-	for o in BK.DAYS[d]["orders"]:
-		var score = await run_order({"customer": o[0], "weapon": o[1], "tier": o[2]})
-		if my_run != run_id:
-			return
-		day_results.append(score)
+	if shop and is_instance_valid(shop):
+		shop.queue_free()
+	shop = preload("res://scripts/shop/shop.gd").new()
+	add_child(shop)
+	shop.setup(self, d)
+
+## The shop day is over: one score per order (0 for customers who gave up).
+func shop_day_done(results: Array) -> void:
+	day_results = results
+	if shop and is_instance_valid(shop):
+		shop.queue_free()
+		shop = null
+	ws.clear_props()
 	_day_summary()
 
 func _day_summary() -> void:

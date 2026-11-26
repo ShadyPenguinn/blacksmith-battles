@@ -21,6 +21,7 @@ var prev := {"grab": false, "use": false}
 var act_t := 0.0
 var moving := false
 var ring: MeshInstance3D
+var auto_target = null      # shop mode: click-to-walk destination (Vector3) or null
 
 func setup(p_rush: Node, p_idx: int, n: int) -> void:
 	rush = p_rush
@@ -104,6 +105,16 @@ func _process(delta: float) -> void:
 	elif use_edge and act_t <= 0.0 and not tongs:
 		rush.use(self)
 	var mv = _move_input()
+	if mv.length() > 0.1:
+		auto_target = null
+	elif auto_target != null:
+		var d = Vector2(auto_target.x - global_position.x, auto_target.z - global_position.z)
+		if d.length() < 0.25:
+			auto_target = null
+			if rush.has_method("arrived"):
+				rush.arrived(self)
+		else:
+			mv = d.normalized() * minf(1.0, d.length() * 2.0 + 0.3)
 	var speed = BK.RUSH["speed"] if held == null else BK.RUSH["carry_speed"]
 	if act_t > 0.0:
 		speed *= 0.2

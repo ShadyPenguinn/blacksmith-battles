@@ -41,6 +41,31 @@ Upgrades** (bellows, longer tongs, a balanced hammer, a whetstone, and a cat).
 Metals: Copper, Bronze, Iron, Steel, Moonsilver, Starmetal. Harder metals tighten heat bands,
 speed up meters, and need more hammer ropes.
 
+### Running the shop
+
+A shop day is played on the shop floor. You walk the smith around (WASD, or click/tap where to
+go; click a station to walk straight to it) and press **E or Space** (or click the station
+you're standing at) to use it, pick something up or put it down.
+
+- Customers walk in and wait at the counter. Their ticket appears across the top: weapon, metal,
+  route, how far along it is, and a **patience bar**. More customers arrive during the day, so
+  you'll have several tickets at once. If patience runs out they storm off. Faster service pays
+  more.
+- Start an order at the **ore rock** (it picks the oldest ticket). You carry the work around:
+  ore, crushed ore, crucible or bloom, bar, blade. A label over it and a ring on the floor show
+  which station is next.
+- Each station zooms in for its minigame, just like before.
+- **Hands-off stations**: the **furnace** smelts on its own for a while (about 9-15 s), and a
+  cast **mold** cools on its own on the casting table. While they run you're free to start the
+  next order or carry another job along. Come back in time: a bloom or crucible left sitting
+  in a ready furnace starts to burn and loses grade.
+- **Station camera**: while you're in a minigame and the furnace or a mold is running, a small
+  camera in the corner shows it. **Tab** switches which one it shows.
+- Finished weapons go to the counter. The customer pays, reacts and leaves.
+
+Tuning is in `SHOP` and `shop_stages()` in `scripts/bk.gd`; the floor logic is
+`scripts/shop/shop.gd`. The Recipe Book still plays an order as a straight run of minigames.
+
 ### Two routes, like the real thing
 
 The metal decides how the weapon is made (see `steps_for()` in `scripts/bk.gd`):
@@ -114,7 +139,7 @@ Rush Hour needs a keyboard or gamepad; solo works with touch.
 ## Files
 
 - `scripts/bk.gd`: all tuning and data (steps, weapons, metals, customers, days, upgrades, Rush).
-- `scripts/main.gd`: menus, shop days, the order flow. `scripts/hud.gd`: everything on screen.
+- `scripts/main.gd`: menus, days, the practice order flow. `scripts/shop/*.gd`: the walk-around shop day. `scripts/hud.gd`: everything on screen.
 - `scripts/workshop.gd`: the 3D forge, stations, camera shots. `scripts/actor.gd`: KayKit characters.
 - `scripts/games/*.gd`: one file per step. `scripts/coop/*.gd`: Rush Hour.
 - `assets/models/`: KayKit (CC0) plus the Storm Forge Blender kits (bellows, furnace, trip hammer, dunk tank).
@@ -128,6 +153,8 @@ xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/capture.
 xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/fuzz.gd
 # crush, temper, fold and pour played like a person would, with scores (and screenshots)
 xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/play_new.gd -- /tmp/shots
+# a bot plays a whole shop day (day index, optional screenshot folder)
+xvfb-run godot --rendering-driver opengl3 --path . --script res://tests/shop_test.gd -- 5 /tmp/shop
 # one sword through the whole Rush Hour pipeline
 godot --headless --path . --script res://tests/rush_test.gd
 ```

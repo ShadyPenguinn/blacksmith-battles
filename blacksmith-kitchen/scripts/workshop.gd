@@ -13,7 +13,8 @@ const TANK := Vector3(5.8, 0, -3.9)
 const GRIND := Vector3(7.6, 0, -0.6)
 const BENCH := Vector3(-7.4, 0, 0.6)
 const ROCK := Vector3(-7.6, 0, 3.4)
-const CRUSH := Vector3(-6.2, 0, 3.9)      # the crushing stone, beside the rock
+const CRUSH := Vector3(-5.0, 0, 3.0)      # the crushing stone with its roasting pan, by the rock
+const CAST := Vector3(-4.2, 0, 0.9)       # the casting table with the sand molds
 const COUNTER_Z := 4.2
 const CUSTOMER := Vector3(1.0, 0, 5.1)
 const MENTOR_SPOT := Vector3(0.6, 0, 1.4)
@@ -56,7 +57,9 @@ func _ready() -> void:
 	_tank()
 	_grindstone()
 	_bench()
+	_cast_table()
 	_rock()
+	_crusher()
 	_counter()
 	_decor()
 	props = Node3D.new()
@@ -398,6 +401,27 @@ func _bench() -> void:
 	_place("dungeon/candle_triple.gltf", BENCH + Vector3(0.7, 1.0, -0.7), 0, 0.5)
 	_place("dungeon/stool.gltf", BENCH + Vector3(1.4, 0, 0.6), 0, 1.0)
 
+func _cast_table() -> void:
+	_place("dungeon/table_medium.gltf", CAST, 0, 1.0)
+	var sand = Build.box(Vector3(1.6, 0.06, 0.8), Color(0.72, 0.6, 0.42))
+	sand.position = CAST + Vector3(0.2, 1.03, 0.05)
+	add_child(sand)
+
+## The crushing stone and the roasting pan over coals, beside the ore rock.
+const CRUSH_TOP := 0.3
+func _crusher() -> void:
+	var slab = Build.box(Vector3(1.7, CRUSH_TOP, 0.9), Color(0.42, 0.4, 0.38))
+	slab.position = CRUSH + Vector3(0, CRUSH_TOP * 0.5, 0)
+	add_child(slab)
+	var pan = Node3D.new()
+	pan.position = CRUSH + Vector3(1.25, 0.25, 0.1)
+	add_child(pan)
+	var coals = Build.box(Vector3(0.6, 0.2, 0.6), Color(1.0, 0.4, 0.1), 1.6)
+	coals.position = Vector3(0, -0.12, 0)
+	pan.add_child(coals)
+	var tray = Build.box(Vector3(0.7, 0.06, 0.7), Color(0.25, 0.23, 0.22))
+	pan.add_child(tray)
+
 func bench_top() -> float:
 	return 1.0
 
@@ -491,6 +515,8 @@ func _shots() -> void:
 		"grind": [GRIND + Vector3(3.0, 2.1, 0.3), GRIND + Vector3(0, 1.0, 0), 50.0],
 		"bench": [BENCH + Vector3(0, 3.1, 1.2), BENCH + Vector3(0, 1.0, 0.05), 45.0],
 		"mine": [ROCK + Vector3(0, 1.8, 3.0), ROCK + Vector3(0, 0.6, 0), 48.0],
+		"cast": [CAST + Vector3(0, 3.1, 1.2), CAST + Vector3(0, 1.0, 0.05), 45.0],
+		"shop": [Vector3(-0.5, 14.0, 10.6), Vector3(-0.5, 0, -0.4), 48.0],
 		"crush": [CRUSH + Vector3(0.4, 2.3, 1.9), CRUSH + Vector3(0.4, 0.2, 0), 48.0],
 	}
 
