@@ -55,6 +55,8 @@ var lean_to := Vector3.ZERO
 var lean_t := -1.0                # >= 0 while gliding from one area to the next
 var cam_look := Vector3.ZERO      # where the camera looks, smoothed so it never snaps
 var flash_t = 0.0
+var game_override = {}            # tests: force a minigame per station, like {"anvil": "rope"}
+var pool: StaticBody3D = null      # bucket relay: the water pool, when this room has one
 
 func _ready() -> void:
 	randomize()
@@ -299,6 +301,7 @@ func make_layout(i: int) -> Dictionary:
 	var o = area_origin(i)
 	var st = {}
 	var spots = []
+	var games = room_games(i)
 	if i == 0:
 		st = {"furnace": Vector2(-6, -3), "anvil": Vector2(-1.5, -3), "trough": Vector2(4.5, -4)}
 		for k in st:
@@ -326,6 +329,20 @@ func make_layout(i: int) -> Dictionary:
 	# ...off the anvil's hammer rope and the dunk tank's slide too.
 	spots.append(st["anvil"] + Vector2(2.4, 0))
 	spots.append(st["trough"] + Vector2(0, 2.0))
+	if games["anvil"] == "duo":
+		spots.append(st["anvil"] + Vector2(-SF.DUO["spot_x"], 1.0))
+		spots.append(st["anvil"] + Vector2(SF.DUO["spot_x"], 1.0))
+	# Bucket relay: the pool goes as far from the cooling block as there's room for.
+	if games["quench"] == "bucket":
+		var best = Vector2(-10, 10)
+		var bd = -1.0
+		for t in 60:
+			var pt = _free_spot(spots, Rect2(-10.5, -8, 21, 19), 4.0)
+			if pt != null and pt.distance_to(st["trough"]) > bd:
+				bd = pt.distance_to(st["trough"])
+				best = pt
+		st["pool"] = best
+		spots.append(best)
 	for k in st:
 		st[k] = Vector2(st[k].x + o.x, st[k].y + o.z)
 	var nodes = []
@@ -344,7 +361,21 @@ func make_layout(i: int) -> Dictionary:
 			spots.append(pt)
 			nodes.append([next_node_id, ore, pt.x + o.x, pt.y + o.z, randi_range(SF.VEIN_CHUNKS - 1, SF.VEIN_CHUNKS + 1)])
 			next_node_id += 1
-	return {"door": i, "stations": st, "nodes": nodes}
+	return {"door": i, "stations": st, "nodes": nodes, "games": games}
+
+## Which minigame each station plays in room i. Rooms 1-3 are fixed (SF.GAME_ROOMS) so they
+## can be playtested; later rooms pick at random. Tests can force one with game_override.
+func room_games(i: int) -> Dictionary:
+	var g: Dictionary
+	if i < SF.GAME_ROOMS.size():
+		g = SF.GAME_ROOMS[i].duplicate()
+	else:
+		g = {}
+		for k in SF.GAME_POOL:
+			g[k] = SF.GAME_POOL[k].pick_random()
+	for k in game_override:
+		g[k] = game_override[k]
+	return g
 
 ## A random point in rect (area-local x, z) at least gap from every taken point, or null.
 func _free_spot(taken: Array, rect: Rect2, gap: float):
@@ -368,9 +399,10 @@ func build_area(lay: Dictionary) -> void:
 	for k in areas.keys():
 		if k < i - 1 or k >= i:
 			_free_area(k)
-	for st in [furnace, anvil, trough]:
+	for st in [furnace, anvil, trough, pool]:
 		if st and is_instance_valid(st):
 			st.retire()
+	pool = null
 	if door and is_instance_valid(door):
 		door.retire()
 		door.queue_free()
@@ -397,23 +429,47 @@ func build_area(lay: Dictionary) -> void:
 	door = _station("door", o + Vector3(0, 3.5, -12.5), Vector3(12, 7, 1), Color(0.35, 0.22, 0.12), {}, root)
 	door.dress_gate()
 	var st: Dictionary = lay["stations"]
+	var games: Dictionary = lay.get("games", SF.GAME_ROOMS[0])
 	var made = {}
 	for k in ["furnace", "anvil", "trough"]:
 		var sz: Vector3 = STATION_SIZES[k]
-		made[k] = _station(k, Vector3(st[k].x, sz.y * 0.5, st[k].y), sz, STATION_COLORS[k], {}, root)
+		var col: Color = STATION_COLORS[k]
+		if k == "anvil" and games["anvil"] == "duo":
+			sz = SF.DUO["size"]
+		if k == "trough" and games["quench"] == "bucket":
+			col = Color(0.5, 0.5, 0.52)   # a stone cooling block
+		made[k] = _station(k, Vector3(st[k].x, sz.y * 0.5, st[k].y), sz, col, {}, root)
 	furnace = made["furnace"]
 	anvil = made["anvil"]
 	trough = made["trough"]
+	furnace.game = games["furnace"]
+	anvil.game = games["anvil"]
+	trough.game = games["quench"]
 	anvil.area = i
 	trough.area = i
-	anvil.add_trip_hammer()
-	trough.add_dunk_tank()
+	match anvil.game:
+		"rope":
+			anvil.add_trip_hammer(2)
+		"ropes":
+			anvil.add_trip_hammer(SF.ROPES["count"])
+		_:
+			anvil.add_meter()
+	if trough.game == "bucket":
+		trough.add_cool_block()
+		var ps: Vector3 = SF.BUCKET["pool_size"]
+		pool = _station("pool", Vector3(st["pool"].x, ps.y * 0.5, st["pool"].y), ps, Color(0.45, 0.45, 0.48), {}, root)
+		pool.add_pool()
+	else:
+		trough.add_dunk_tank()
 	if not furnace.use_furnace_model():
 		var fire = Build.box(Vector3(1.2, 0.5, 0.1), Color(1.0, 0.45, 0.1), 3.0)
 		fire.position = Vector3(0, -0.5, 1.12)
 		furnace.add_child(fire)
 		furnace.mouth = fire
-	furnace.add_bellows()
+	if furnace.game == "lever":
+		furnace.add_levers()
+	else:
+		furnace.add_bellows()
 	for n in lay["nodes"]:
 		_add_node(n)
 	if mod("rod") > 0:
@@ -576,6 +632,13 @@ func start_area() -> void:
 		rod = _station("rod", area_origin(door_index) + Vector3(0, 2, 4.5), Vector3(0.25, 4, 0.25), Color(0.75, 0.75, 0.8), {}, areas.get(door_index))
 	lightning.reset_area()
 	env.background_color = cfg["sky"]
+	# Say which minigames this room plays, and leave buckets by the pool.
+	var g: Dictionary = layout.get("games", {})
+	if not g.is_empty():
+		toast("Room %d: %s, %s, %s" % [door_index + 1, SF.GAME_NAMES[g["furnace"]], SF.GAME_NAMES[g["anvil"]], SF.GAME_NAMES[g["quench"]]])
+	if pool:
+		for b in SF.BUCKET["extra_buckets"]:
+			spawn_item("tool", pool.global_position + Vector3(-0.8 + 1.6 * b, 0.6, pool.size.z * 0.5 + 0.9), {"tool": "bucket"})
 	send_area()
 	toast("Door %d: %s. Break it before the storm peaks!" % [door_index + 1, cfg["area"]])
 
@@ -744,12 +807,27 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 		return
 	match action_name:
 		"interact":
+			# Lever pump: grab pushes the lever down.
+			var lv2 = furnace.lever_near(p) if furnace else -1
+			if lv2 >= 0 and furnace.lever_up[lv2]:
+				_face_point(p, furnace.levers[lv2][1].global_position)
+				_say(p, furnace.lever_stroke(lv2, false))
+				return
 			var said = interact(p)
 			if said.begins_with("Picked") or said.begins_with("Swapped") or said.begins_with("Tongs"):
 				p.act("grab")
 			elif said.begins_with("Put") or said.begins_with("Placed"):
 				p.act("place")
 		"use":
+			# Lever pump: use pulls the lever up.
+			var lv = furnace.lever_near(p) if furnace else -1
+			if lv >= 0:
+				if furnace.lever_up[lv]:
+					_say(p, "Push it down! (right click / E)")
+					return
+				_face_point(p, furnace.levers[lv][1].global_position)
+				_say(p, furnace.lever_stroke(lv, true))
+				return
 			# Tongs out by a hot ingot or blade: grip it. It stays gripped while you hold the button.
 			var tg = p.tongs()
 			if tg and p.held == tg and tg.tongs_load == null:
@@ -774,6 +852,17 @@ func do_action(p, action_name: String, extra: Dictionary) -> void:
 				return
 			_face_target(p)
 			p.act(h.tool if h.kind == "tool" else "weapon", func(): use(p))
+			# Offline: a smith you parked in the other ring of the big anvil swings with you.
+			if not is_online() and h.kind == "tool" and h.tool == "hammer" and anvil and anvil.game == "duo":
+				var mine = anvil.duo_spot(p)
+				if mine >= 0:
+					for o in players:
+						if o != p and anvil.duo_spot(o) == 1 - mine and o.can("use"):
+							if o.slots[1]:
+								o.select(1)
+							if o.held and o.held.tool == "hammer":
+								_face_target(o)
+								o.act("hammer", func(): use(o))
 		"throw":
 			if p.held:
 				p.act("throw", func():
@@ -813,7 +902,9 @@ func set_controlled(i: int) -> void:
 		players[j].controlled = (j == i)
 		players[j].in_move = Vector2.ZERO
 		players[j].in_sprint = false
-		players[j].in_hold = false
+		# Offline: a smith you switch away from keeps holding their rope (parked), so you
+		# can man several ropes alone. They all let go when the smith you control does.
+		players[j].in_hold = players[j].rope != null and not is_online() and j != i
 
 func _update_camera(delta: float) -> void:
 	if players.is_empty():
@@ -1056,7 +1147,12 @@ func use(p) -> String:
 			if nearest_station(p, ["furnace"]):
 				return _say(p, "Jump on the bellows to blow air in")
 		"hammer":
-			if nearest_station(p, ["anvil"]):
+			var anv = nearest_station(p, ["anvil"])
+			if anv == null and anvil and anvil.game == "duo" and anvil.duo_spot(p) >= 0:
+				anv = anvil
+			if anv and anv.game in ["meter", "duo"]:
+				return _say(p, anv.hammer_hit(p))
+			if anv:
 				return _say(p, "Grab the red rope handle and walk back to raise the big hammer")
 			if _near_door(p):
 				return _say(p, door.door_hit(p, h))
@@ -1072,7 +1168,14 @@ func use(p) -> String:
 						o.revive()
 						h.bucket_full = false
 						return _say(p, "Splash! " + o.role["name"] + " is back up")
-			if nearest_station(p, ["trough"]):
+			var tr = nearest_station(p, ["trough"])
+			if tr and tr.game == "bucket":
+				if not h.bucket_full:
+					return _say(p, "Empty bucket! Fill it at the pool")
+				return _say(p, tr.splash(h))
+			if tr or nearest_station(p, ["pool"]):
+				if h.bucket_full:
+					return _say(p, "It's already full")
 				h.bucket_full = true
 				return _say(p, "Bucket filled")
 	return _say(p, "Nothing to use the " + h.tool + " on here")
@@ -1092,6 +1195,8 @@ func swing_target(p) -> Node3D:
 			return door if _near_door(p) else null
 		"hammer":
 			var a = nearest_station(p, ["anvil"])
+			if a == null and anvil and anvil.game == "duo" and anvil.duo_spot(p) >= 0:
+				a = anvil
 			if a:
 				return a
 			if _near_door(p):
@@ -1103,8 +1208,15 @@ func swing_target(p) -> Node3D:
 			for o in players:
 				if o != p and o.stun > 0.0 and _flat_dist(o.global_position, p.global_position) < SF.REACH:
 					return o
-			return nearest_station(p, ["trough"])
+			var tr = nearest_station(p, ["trough"])
+			return tr if tr else nearest_station(p, ["pool"])
 	return null
+
+func _face_point(p, at: Vector3) -> void:
+	var d = at - p.global_position
+	d.y = 0
+	if d.length() > 0.2:
+		p.facing = d.normalized()
 
 ## Turn to face what you're about to hit, so the swing lands on it.
 func _face_target(p) -> void:
@@ -1185,9 +1297,14 @@ func _say(p, msg: String) -> String:
 ## One-line hint for what E and F do right now.
 func hint(p) -> String:
 	var parts = []
-	var near = nearest_station(p, ["node", "furnace", "anvil", "trough"])
+	var near = nearest_station(p, ["node", "furnace", "anvil", "trough", "pool"])
+	var names = {"trough": "Dunk tank", "pool": "Water pool"}
+	if near and near.kind == "trough" and near.game == "bucket":
+		names["trough"] = "Cooling block"
 	if near:
-		parts.append("Near: " + (near.ore.capitalize() + " node" if near.kind == "node" else near.kind.capitalize()))
+		parts.append("Near: " + (near.ore.capitalize() + " node" if near.kind == "node" else names.get(near.kind, near.kind.capitalize())))
+	if furnace and furnace.lever_near(p) >= 0:
+		parts.append("Lever: left click up, right click down")
 	elif _near_door(p):
 		parts.append("Near: the door")
 	return "   ".join(parts)
@@ -1210,9 +1327,9 @@ func make_snapshot() -> Dictionary:
 	return {
 		"p": ps, "i": its, "n": nodes,
 		"g": [door_index, time_left, area_time, peak_time, over, paused_for_roll, mods],
-		"f": [furnace.heat, furnace.contents, furnace.smelt],
+		"f": [furnace.heat, furnace.contents, furnace.smelt, furnace.full_side, furnace.lever_up],
 		"a": [anvil.slot.net_id if anvil.slot else 0, anvil.shape, anvil.ham_h],
-		"t": [trough.slot.net_id if trough.slot else 0, trough.beat_t, trough.dunk_t],
+		"t": [trough.slot.net_id if trough.slot else 0, trough.beat_t, trough.dunk_t, trough.cool],
 		"d": [door.hp, door.max_hp, door.tier, door.beat_t],
 		"l": [lightning.ring.visible, lightning.target_pos],
 	}
@@ -1312,6 +1429,11 @@ func apply_snapshot(s: Dictionary) -> void:
 	furnace.heat = f[0]
 	furnace.contents = f[1]
 	furnace.smelt = f[2]
+	if furnace.game == "swap" and furnace.full_side != f[3]:
+		furnace.full_side = f[3]
+		furnace._swap_pose(true)
+	for i in furnace.levers.size():
+		furnace.lever_set(i, f[4][i])
 	var a: Array = s["a"]
 	anvil.slot = items_by_id.get(a[0]) if a[0] != 0 else null
 	anvil.shape = a[1]
@@ -1321,6 +1443,7 @@ func apply_snapshot(s: Dictionary) -> void:
 	if absf(trough.beat_t - tk[1]) > 0.25:
 		trough.beat_t = tk[1]
 	trough.dunk_t = tk[2]
+	trough.cool = tk[3]
 	var d2: Array = s["d"]
 	door.hp = d2[0]
 	door.max_hp = d2[1]
@@ -1359,6 +1482,15 @@ func apply_event(kind: String, data) -> void:
 		"slam":
 			if anvil:
 				anvil.slam_fx(data)
+		"lever":
+			if furnace:
+				furnace.lever_set(data[0], data[1])
+		"meter":
+			if anvil:
+				anvil.meter_fx(data)
+		"splash":
+			if trough:
+				trough.splash_fx()
 		"dunk":
 			if trough:
 				trough.ding_fx(data)

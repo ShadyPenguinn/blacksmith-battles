@@ -55,6 +55,25 @@ Every smith carries the whole kit. Slots 1-4 are tools, one of each: pickaxe, ha
 
 When the storm timer runs out you get a 60-second last stand with ever faster lightning.
 
+## Minigames per room
+
+Each room picks one minigame for each station. Rooms 1-3 are fixed for playtesting (`SF.GAME_ROOMS`); later rooms pick at random from `SF.GAME_POOL`. A toast names the room's games when you walk in.
+
+| Room | Furnace | Anvil | Cooling |
+| --- | --- | --- | --- |
+| 1 | Swap bellows | Hammer meter | Bucket relay |
+| 2 | Lever pump | Four-rope hammer | Dunk tank |
+| 3 | Stomp bellows | Two-smith anvil | Bucket relay |
+
+- **Swap bellows** (`SF.SWAP`): stomping the full bellows blows it flat and fills the other one. A flat one does nothing, so two smiths take turns or one runs back and forth.
+- **Lever pump** (`SF.LEVER`): a lever on each side of the furnace. Left click / F pulls it up, right click / E pushes it down. Every stroke blows air in; the same stroke twice does nothing.
+- **Hammer meter** (`SF.METER`): hammer out (2), stand at the anvil and swing when the marker is in the middle. Green is Perfect, yellow is Good, a miss cools the ingot. Harder metals sweep faster.
+- **Two-smith anvil** (`SF.DUO`): a big anvil with a ring on each side. A ring lights up blue when a smith with a hammer stands in it, and yellow right after that smith hits: that's when the other one has to swing. Only hits in the middle from both rings within 0.45 s count.
+- **Four-rope hammer** (`SF.ROPES`): like the rope hammer, but each rope only lifts the head 0.7 m. More smiths on more ropes lift it higher.
+- **Bucket relay** (`SF.BUCKET`): the blade lands on a stone cooling block, far from a water pool. Fill buckets at the pool (use) and splash the blade (use) three times. Two extra buckets wait by the pool.
+
+**Playing alone (offline):** a smith you Tab away from keeps holding their rope, and they all let go when the smith you control does. A smith parked in the other ring of the two-smith anvil swings along with you.
+
 ## Tuning
 
 Every number is at the top of `scripts/data.gd`: timer, strike rate, heat bands, the rope hammer, the dunk tank, door HP, recipes, buffs and debuffs.

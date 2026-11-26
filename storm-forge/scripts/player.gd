@@ -585,7 +585,13 @@ func _physics_process(delta: float) -> void:
 	dive_cd = maxf(0.0, dive_cd - delta)
 	rope_grace = maxf(0.0, rope_grace - delta)
 	if rope != null and (stun > 0.0 or rope.dead or (not in_hold and rope_grace <= 0.0)):
+		var r = rope
 		rope = null
+		# Offline, smiths you parked on the other ropes let go with you.
+		if controlled and not main.is_online():
+			for o in r.pullers():
+				o.rope = null
+				o.in_hold = false
 	tongs_grace = maxf(0.0, tongs_grace - delta)
 	if tongs_hold:
 		var t = tongs()
